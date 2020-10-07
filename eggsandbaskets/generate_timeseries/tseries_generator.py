@@ -24,7 +24,7 @@ from itertools import permutations
 from interpolation.splines import extrap_options as xto
 import gc
 
-from retirementeggs.util.helper_funcs import *
+from eggsandbaskets.util.helper_funcs import *
 
 def genprofiles_operator(og,
 				norm = 1E5):

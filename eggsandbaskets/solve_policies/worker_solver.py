@@ -38,9 +38,9 @@ warnings.filterwarnings('ignore')
 import sys
 sys.path.append("..")
 from solve_policies.retiree_solver import retiree_func_factory
-from retirementeggs.util.helper_funcs import gen_policyout_arrays, d0, interp_as,\
+from eggsandbaskets.util.helper_funcs import gen_policyout_arrays, d0, interp_as,\
     gen_reshape_funcs, einsum_row
-from retirementeggs.util.grids_generate import generate_points
+from eggsandbaskets.util.grids_generate import generate_points
 
 
 def worker_solver_factory(og, gen_R_pol):
@@ -393,7 +393,7 @@ def worker_solver_factory(og, gen_R_pol):
             - UC_prime_H_RHS
 
         if ret_cons:
-            return max(c_t, C_min)
+            return c_t
 
         # Return equation x in paper
 
@@ -589,7 +589,7 @@ def worker_solver_factory(og, gen_R_pol):
                                         grid_size_Q))
         return mort_func
 
-    @njit
+    @njit(parallel=True, nogil= True)
     def eval_rent_pol_W(UC_prime):
         """
         Creates renter policy function as function of
@@ -690,7 +690,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return h_prime_func_3
 
-    @njit
+    @njit(parallel=True, nogil=True)
     def interp_pol_noadj(assets_l, etas, cons_l):
         """ Interpolates no adjust policy functions using
         from endogenous grids"""
@@ -766,7 +766,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return C_noadj, etas_noadj, Aprime_noadj
 
-    @njit
+    @njit(parallel=True, nogil=True)
     def interp_pol_adj(A_prime,
                        C,
                        wealth_bar):
@@ -800,7 +800,7 @@ def worker_solver_factory(og, gen_R_pol):
             h_clean = H_R[~np.isnan(wealth_bar_reshape[i])]
             h_x = np.take(h_clean, np.argsort(wealth_x))
 
-            print(h_x)
+            #print(h_x)
             c_clean = C_adj[i][~np.isnan(wealth_bar_reshape[i])]
             c_x = np.take(c_clean, np.argsort(wealth_x))
 
@@ -842,7 +842,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return C_adj, H_adj, Aprime_adj
 
-    @njit
+    @njit(parallel=True, nogil= True)
     def eval_policy_W_noadj(t,
                             mort_func,
                             UC_prime_func,
@@ -1148,7 +1148,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return C_noadj, etas_noadj, Aprime_noadj
 
-    @njit
+    @njit(parallel=True, nogil=True)
     def eval_policy_W_adj(t, mort_func,
                           UC_prime_func,
                           UC_prime_H_func,
@@ -1309,7 +1309,9 @@ def worker_solver_factory(og, gen_R_pol):
                     * HA_FOC(A_max_W, *args_HA_FOC) < 0:
                 # if interior solution to a_t+1, calculate it
                 A_prime[i] = max(brentq(HA_FOC, A_min, A_max_W,
-                                        args=args_HA_FOC, xtol= 1e-05)[0], A_min)
+                                        args=args_HA_FOC, 
+                                            xtol= 1e-05)[0],
+                                        A_min)
 
                 C[i] = max(
                     C_min,
@@ -1330,7 +1332,8 @@ def worker_solver_factory(og, gen_R_pol):
                         t,
                         ret_cons=True))
                 m_prime_adj = interp_as(A, mort_func1D,
-                                        np.array([A_prime[i]]), extrap = True)[0]
+                                        np.array([A_prime[i]]),
+                                        extrap = True)[0]
                 m_prime = max(0, min(m_prime_adj, max_loan))
                 extra_payment = (1 - amort_rate(t - 2)) * m - m_prime
 
@@ -1723,7 +1726,7 @@ def worker_solver_factory(og, gen_R_pol):
             reshape_RHS_Vfunc_rev(VF_B_norent),\
             reshape_RHS_Vfunc_rev(zeta)
 
-    @njit
+    njit(parallel=True, nogil=True)
     def gen_RHS_UC_func(t, noadj_pols,
                         adj_pols,
                         H_rent,
@@ -1985,7 +1988,7 @@ def worker_solver_factory(og, gen_R_pol):
         return UC_prime_DCC, UC_prime_H_DCC, UC_prime_HFC_DCC, UC_prime_M_DCC,\
             Lambda_DCC, VF_DCC, Xi_cov_out, Xi_copi_out, UF_DCC,Xi
 
-    @njit
+    @njit(parallel=True, nogil=True)
     def UC_cond_all(t, UC_prime_DCC, UC_prime_H_DCC,
                     UC_prime_HFC_DCC, UC_prime_M_DCC,
                     Lambda_DCC, VF_DCC, UF_DCC):
