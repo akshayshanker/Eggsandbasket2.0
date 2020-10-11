@@ -1837,19 +1837,18 @@ def retiree_func_factory(og):
 
         for i in range(int(T-R+1)):
             t = T-i
-            print(t)
+            #print(t)
             #start = time.time() 
-            h_prime_rent                                 = eval_rent_pol(t_prime_funcs,t)
+            h_prime_rent = eval_rent_pol(t_prime_funcs,t)
             #print(time.time() - start)
             #start = time.time()
-            m_prime_func                                 = eval_mort_policy(t,t_prime_funcs)    
+            m_prime_func = eval_mort_policy(t,t_prime_funcs)    
             #print(time.time() - start)
             #start = time.time()       
-            a_noadj, c_noadj, etas_noadj                 = eval_policy_R_noadj(t, m_prime_func,t_prime_funcs) 
+            a_noadj, c_noadj, etas_noadj = eval_policy_R_noadj(t, m_prime_func,t_prime_funcs) 
             #rint(time.time() - start)
             #start = time.time()
-            a_adj_uniform, c_adj_uniform,H_adj_uniform,\
-               = eval_policy_R_adj(t,m_prime_func, t_prime_funcs) 
+            a_adj_uniform, c_adj_uniform,H_adj_uniform = eval_policy_R_adj(t,m_prime_func, t_prime_funcs) 
 
             zeta_nl, c_adj_uniform_nl,H_adj_uniform_nl = eval_policy_R_adj_nl(t,m_prime_func, t_prime_funcs) 
             #print(time.time() - start)
@@ -1860,14 +1859,13 @@ def retiree_func_factory(og):
             (a_noadj, c_noadj, etas_noadj, a_adj_uniform, c_adj_uniform,\
              H_adj_uniform, zeta_nl, c_adj_uniform_nl,H_adj_uniform_nl, h_prime_rent, UF_dbprime)
 
-        #start = time.time()
         UC_prime_out, UC_prime_H_out, UC_prime_HFC_out,UC_prime_M_out,Lambda,VF = gen_RHS_TR(t, *t_prime_funcs)
-        #UC_prime_out, UC_prime_H_out, UC_prime_HFC_out,UC_prime_M_out,Lambda,VF = 0,0,0,0,0,0
         #print(time.time() - start)
-        return a_noadj,c_noadj, etas_noadj,a_adj_uniform,\
-                c_adj_uniform,H_adj_uniform,zeta_nl, c_adj_uniform_nl,\
-                H_adj_uniform_nl, h_prime_rent,UC_prime_out, UC_prime_H_out,\
-                UC_prime_HFC_out,UC_prime_M_out, Lambda,VF
+        return UC_prime_out, UC_prime_H_out, UC_prime_HFC_out,UC_prime_M_out, Lambda,VF
+
+                #a_noadj,c_noadj, etas_noadj,a_adj_uniform,\
+                #c_adj_uniform,H_adj_uniform,zeta_nl, c_adj_uniform_nl,\
+                #H_adj_uniform_nl, h_prime_rent,
     
     return gen_R_pol
 
@@ -2021,8 +2019,6 @@ if __name__ == "__main__":
 
                 etas2               = np.abs(etas)>1 
 
-                #etas2               = etas1>=1
-
                 consumption[i]      = etas2*consumption_adj + (1-etas2)*consumption_noadj
                 assets_prime[i]     = etas2*assets_adj      + (1-etas2)*assets_noadj
                 H_prime[i]          = etas2*H_adj           + (1-etas2)*h
@@ -2031,8 +2027,6 @@ if __name__ == "__main__":
 
                 points              = np.column_stack((assets_prime[i],H_prime[i], np.full(len(assets_prime[i]), q),consumption[i]))
 
-
-                #print(mortgage_pay)
 
                 #mortgage_pay[mortgage_pay<=min_payment] = min_payment
 

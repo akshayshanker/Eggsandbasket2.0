@@ -72,7 +72,19 @@ class LifeCycleModel:
     Todo
     ----
       Check the scaling factors in the low and high risk returns
-      processes are consistent with papern 
+      processes are consistent with paper; need to confirm 
+      whether sigma_DC and sigma_DB is variance or SD?
+
+      Check and revise calculation of r_m_prime in grids_generate and helper
+      funcs. Apply DRY to calculation r_m_prime
+
+      Change paramter h to another name
+
+      change paramters r_h to another name 
+
+    Completed checkes
+    -----------------
+
     """
 
     def __init__(self,
@@ -242,10 +254,20 @@ class LifeCycleModel:
             self.X_QH_W\
                 = UCGrid((param.A_min_W, param.A_max_WW, param.grid_size_A),
                          (param.DC_min, param.DC_max, param.grid_size_DC))
+
+            self.X_QH_WRTS\
+                = UCGrid((param.A_min_W, param.A_max_WW, param.grid_size_A),
+                         (param.DC_min, param.DC_max, param.grid_size_DC),
+                         (param.Q_min, param.Q_max, param.grid_size_Q))
             self.X_DCQ_W\
                 = UCGrid((param.DC_min, param.DC_max, param.grid_size_DC),
                          (param.Q_min, param.Q_max, param.grid_size_Q),
                          (param.M_min, param.M_max, param.grid_size_M))
+            self.X_QH_W_TS\
+                = UCGrid((param.DC_min, param.DC_max, param.grid_size_DC),
+                          (param.Q_min, param.Q_max, param.grid_size_Q),
+                          (param.M_min, param.M_max, param.grid_size_M),
+                          (param.A_min_W, param.A_max_WW, param.grid_size_A))
             self.X_cont_WAM\
                 = UCGrid((param.A_min, param.A_max_W, param.grid_size_A),
                          (param.M_min, param.M_max, param.grid_size_M))
@@ -345,13 +367,15 @@ class LifeCycleModel:
                                           self.alpha_stat)
 
             # Pension asset returns shock processes
-            lnrh_sd = parameters['sigma_d']*(parameters['h']**2)
+            #lnrh_sd = parameters['sigma_d']*(parameters['h']**2)
+            lnrh_sd = parameters['sigma_d']*parameters['h']
             lnrh_mc = tauchen(0, lnrh_sd,
                               n=int(parameters['grid_size_DCR']))
             X_rh, P_rh = lnrh_mc.state_values, lnrh_mc.P[0]
             self.X_rh = np.exp(np.log(parameters['r_h']) + X_rh)
             self.P_rh = P_rh
-            lnrl_sd = parameters['sigma_d']*(parameters['l']**2)
+            #lnrl_sd = parameters['sigma_d']*(parameters['l']**2)
+            lnrl_sd = parameters['sigma_d']*parameters['l']
 
             lnrl_mc = tauchen(0, lnrl_sd,
                               n=int(parameters['grid_size_DCR']))
@@ -594,7 +618,8 @@ class LifeCycleModel:
                              grid1d.Q, grid1d.M])
 
 
-def plot_policy_W(policy, og):
+
+def plot_policy_W(policy, og, acc_ind):
 
     plots_folder = '/home/141/as3442/temp_plots/'
     NUM_COLORS = len(og.grid1d.M)
@@ -608,7 +633,7 @@ def plot_policy_W(policy, og):
         for l in range(len(og.grid1d.Q)):
             for k in range(len(og.grid1d.A_DC)):
                 t = int(age - og.parameters.tzero)
-                pols_adj = policy[int(3 + pol_key)][t][0, 1, 1, 1, 1, k, l, :, :]
+                pols_adj = policy[int(3 + pol_key)][t][acc_ind, 1, 1, 1, 1, k, l, :, :]
                 plt.close()
                 NUM_COLORS = len(pols_adj)
                 colormap = cm.viridis
@@ -634,7 +659,13 @@ def plot_policy_W(policy, og):
 
 
 def eval_rent_share(Q_shocks_r, r, r_H, r_l, beta_m):
-    """Calcuates rental to house price share"""
+    """Calcuates rental to house price share
+
+    Todo
+    ----
+
+    Place this function in helper_funcs
+    """
     @njit
     def gen_npv_price():
         ph = np.ones((int(1e3)))
@@ -661,26 +692,81 @@ def eval_rent_share(Q_shocks_r, r, r_H, r_l, beta_m):
 if __name__ == "__main__":
 
     import yaml
+    import dill as pickle
 
     # housing model modules
     from util.grids_generate import generate_points
     from util.helper_funcs import *
     from solve_policies.worker_solver import generate_worker_pols
     from util.randparam import rand_p_generator
-    from generate_timeseries.tseries_generator\
-    import genprofiles_operator, gen_moments, sortmoments
-
+    from generate_timeseries.tseries_generator import gen_panel_ts, gen_moments, sortmoments, genprofiles_operator
+    import copy
     # read settings
     with open("settings.yml", "r") as stream:
         eggbasket_config = yaml.safe_load(stream)
 
-    # Create housing model
-    og = LifeCycleModel(eggbasket_config['baseline_lite'],
-                        np.array([1]))
+    import ray 
+    ray.init(num_cpus = 2)
 
-    # Solve model
-    policies = generate_worker_pols(og, load_retiree=1)
+    @ray.remote
+    def run_acc_in(acc_ind):
+      # Create housing model
+      og = LifeCycleModel(eggbasket_config['baseline_lite'],
+                          np.array([1]))
 
-    plot_policy_W(policies, og)
+      # Solve model
+      policies = generate_worker_pols(og, load_retiree=0)
+
+      #plot_policy_W(policies, og)
+
+      return policies
+
+
+
+    results_DB_id = run_acc_in.remote(0)
+    results_DC_id = run_acc_in.remote(1)
+
+    results_DB, results_DC = ray.get([results_DB_id,results_DC_id])
+
+    pickle.dump(results_DB, \
+            open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "wb"))
+
+
+    pickle.dump(results_DC, \
+            open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "wb"))
+
+    #results_DC = pickle.load(open("/scratch/pv33/ls_model_temp/DB_lite.pols", "rb"))
+    #results_DB = pickle.load(open("/scratch/pv33/ls_model_temp/DB_lite.pols", "rb"))
+
+
+    joined_pols = []
+    for i in range(len(results_DB)):
+      joined_pols.append(np.concatenate((results_DB[i],results_DC[i]), axis =1))
+
+
+    #pickle.dump(joined_pols, \
+    #            open("/scratch/pv33/ls_model_temp/baseline_lite.pols", "wb"))
+
+    #acc_ind = 0
+    #og = LifeCycleModel(eggbasket_config['baseline_lite'],
+    #                np.array([acc_ind]))
+
+    #joined_pols = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite.pols", "rb"))
+
+
+    #TSN = 200
+    #U = np.random.rand(6,100,TSN,100) 
+
+    #TSALL_10_df, TSALL_14_df = gen_panel_ts(og, joined_pols,U, TSN)
+    
+
+
+    #moments_male        = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
+
+    #moments_female      = gen_moments(copy.copy(TS1), copy.copy(TS2)).add_suffix('_female')
+
+
+    #moments_sim_sorted    = sortmoments(moments_male,\
+    #                                     moments_female)
 
     

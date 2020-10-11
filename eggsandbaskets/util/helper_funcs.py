@@ -131,6 +131,7 @@ def gen_policyout_arrays(og):
                                     grid_size_A,\
                                     grid_size_DC,grid_size_H,\
                                     grid_size_Q,grid_size_M))
+    
     policy_H_rent = np.zeros((int(R)-int(tzero),len(DB),
                      grid_size_W,
                      grid_size_alpha,

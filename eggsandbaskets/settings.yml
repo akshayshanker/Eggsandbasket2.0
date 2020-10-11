@@ -114,7 +114,7 @@ baseline_lite:
     R: 64.0
     T: 99.0
     alpha: 1.0
-    alpha_bar: 0.8
+    alpha_bar: 0.6
     beta_bar: 0.97
     beta_m: 3.0
     def_pi: 0.7
@@ -175,7 +175,7 @@ baseline_lite:
     sigma_w: 0.0221957
     tau_housing: 0.08
     theta: 33.981013921969655
-    tzero: 55.0
+    tzero: 16.0
     v_E: 0.17
     v_S: 0.0235
   risk_share_points:

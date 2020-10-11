@@ -72,6 +72,9 @@ def worker_solver_factory(og, gen_R_pol):
 
     More explaination of steps are required in:
             - `gen_RHS_pol_noadj'
+
+    Check whether mortgage liability points in X_all_ind and in gen rhs 
+    func are before or after mortgage interst 
     """
 
     # Unpack  variables from class
@@ -130,7 +133,7 @@ def worker_solver_factory(og, gen_R_pol):
 
     # exogenous shock processes
     beta_hat, P_beta, beta_stat = og.st_grid.beta_hat,\
-        og.interp_grid.X_QH_R, og.st_grid.beta_stat
+        og.st_grid.P_beta, og.st_grid.beta_stat
     alpha_hat, P_alpha, alpha_stat = og.st_grid.alpha_hat,\
         og.st_grid.P_alpha, og.st_grid.alpha_stat
 
@@ -398,8 +401,7 @@ def worker_solver_factory(og, gen_R_pol):
         # Return equation x in paper
 
         if UC_prime_HFC_RHS - ref_const_FOC != 0:
-            return np.abs((uh(c_t, h, alpha_housing) - RHS))\
-                + ref_const_FOC\
+            return np.abs((uh(c_t, h, alpha_housing) + ref_const_FOC - RHS))\
                 - UC_prime_HFC_RHS
         else:
             return uh(c_t, h, alpha_housing) - RHS
@@ -484,7 +486,7 @@ def worker_solver_factory(og, gen_R_pol):
                                                 np.array([x_prime,
                                                           max_loan]), xto.LINEAR)
 
-        if uc_prime_maxloan >= uc_prime_maxloan:
+        if uc_prime_maxloan > ucmprime_m_maxloan:
             m_prime = max_loan
         else:
             m_prime = 0
@@ -514,12 +516,11 @@ def worker_solver_factory(og, gen_R_pol):
                    uc(c, h, alpha_housing) - UC_prime_M_RHS))
 
         RHS = uc(c, h, alpha_housing) * q * (1 + tau_housing)\
-            - UC_prime_H_RHS
+                - UC_prime_H_RHS
 
         if UC_prime_HFC_RHS - ref_const_FOC != 0:
-            return np.abs((uh(c, h, alpha_housing) - RHS))\
-                + ref_const_FOC\
-                - UC_prime_HFC_RHS
+            return np.abs((uh(c, h, alpha_housing) - RHS+ref_const_FOC))\
+                    - UC_prime_HFC_RHS
         else:
             return uh(c, h, alpha_housing) - RHS
 
@@ -544,7 +545,7 @@ def worker_solver_factory(og, gen_R_pol):
         else:
             return 0
 
-    @njit(parallel=True, nogil=True)
+    @njit
     def eval_pol_mort_W(t, UC_prime, UC_prime_M):
         """
         Evaluates unconstrained  mortgage policy function
@@ -589,7 +590,7 @@ def worker_solver_factory(og, gen_R_pol):
                                         grid_size_Q))
         return mort_func
 
-    @njit(parallel=True, nogil= True)
+    @njit
     def eval_rent_pol_W(UC_prime):
         """
         Creates renter policy function as function of
@@ -673,6 +674,12 @@ def worker_solver_factory(og, gen_R_pol):
             a_end_clean = np.sort(a_end_4[i][a_end_4[i]>0])
             hs_sorted = np.take(H_R[a_end_4[i]>0],
                                 np.argsort(a_end_4[i][a_end_4[i]>0]))
+
+            if len(a_end_clean)== 0:
+                a_end_clean = np.zeros(1)
+                a_end_clean[0] = A_min
+                hs_sorted = np.zeros(1)
+                hs_sorted[0] = H_min
 
             h_prime_func_1[i, :] = interp_as(a_end_clean, hs_sorted, W_W)
             h_prime_func_1[i, :][h_prime_func_1[i, :] <= 0] = H_min
@@ -766,7 +773,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return C_noadj, etas_noadj, Aprime_noadj
 
-    @njit(parallel=True, nogil=True)
+    @njit
     def interp_pol_adj(A_prime,
                        C,
                        wealth_bar):
@@ -1389,7 +1396,7 @@ def worker_solver_factory(og, gen_R_pol):
 
     # Functions to generate and condition the RHS of Euler equation
 
-    @njit(parallel=True, nogil=True)
+    @njit
     def gen_RHS_pol_adj(adj_pols, points_adj):
         """ Evalutes policies for housing adjusters on all points in the
                 full state-space grid"""
@@ -1444,7 +1451,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return adj_vals
 
-    @njit(parallel=True, nogil=True)
+    @njit
     def gen_RHS_pol_noadj(noadj_pols, points_noadj):
         """ Evalutes pol for housing non-adjusters on all points in the
                 full state-space grid"""
@@ -1493,7 +1500,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return noadj_vals
 
-    @njit(parallel=True, nogil=True)
+    @njit
     def gen_RHS_pol_rent(H_rent, points_rent):
         """ Evalutes pol for housing renters on all points in the
                 full state-space grid"""
@@ -1611,7 +1618,7 @@ def worker_solver_factory(og, gen_R_pol):
             cannot_rent, c_prime_rent, h_prime_rent, a_prime_rent,\
             ucfunc_rent, ufunc_rent, adcprime
 
-    @njit(parallel=True, nogil=True)
+    @njit
     def gen_RHS_lambdas(t, V_funcs,
                         UF_B_rent,
                         UF_B_norent,
@@ -1684,12 +1691,9 @@ def worker_solver_factory(og, gen_R_pol):
                                                         no_rent_points_p[i],
                                                         xto.LINEAR)
 
-            val_func_vals_norent[:, 0][val_func_vals_norent[:, 0] <= 0]\
-                = 1e-200
             # check: should bequest value go here?
             VF_B_norent[i, :] = UF_B_norent[i, :] + val_func_vals_norent[:, 0]
-            val_func_vals_norent[:,
-                                 1][val_func_vals_norent[:, 1] <= 0] = 1e-200
+
             Lambda_B_norent[i, :] = val_func_vals_norent[:, 1]
             Xi_norent[i] = UF_B_norent[i, :]\
                 + Lambda_B_norent[i, :] * no_rent_points_p[i, :, 1]\
@@ -1702,8 +1706,6 @@ def worker_solver_factory(og, gen_R_pol):
                                                       V_funcs[i],
                                                       rent_points_p[i],
                                                       xto.LINEAR)
-            val_func_vals_rent[:, 1][val_func_vals_rent[:, 1] <= 0] = 1e-200
-            val_func_vals_rent[:, 0][val_func_vals_rent[:, 0] <= 0] = 1e-200
 
             Lambda_B_rent[i, :] = val_func_vals_rent[:, 1]
             VF_B_rent[i, :] = UF_B_rent[i, :]\
@@ -1726,7 +1728,7 @@ def worker_solver_factory(og, gen_R_pol):
             reshape_RHS_Vfunc_rev(VF_B_norent),\
             reshape_RHS_Vfunc_rev(zeta)
 
-    njit(parallel=True, nogil=True)
+    @njit
     def gen_RHS_UC_func(t, noadj_pols,
                         adj_pols,
                         H_rent,
@@ -1825,14 +1827,16 @@ def worker_solver_factory(og, gen_R_pol):
                                                 rent_points_p)
 
 
-        # zeta is the multiplier that indicates renter if zeta>1
+        # zeta is multiplier that indicates renter if zeta>1
         # cannot rent is an indictator that someone is not able
-        # to pay off thier mortgage liability
+        # to pay off thier mortgage liability after renting decision
+        # hence will not rent 
+        # renter_ind = zeta>0 AND cannot_rent == 0 
         zeta[np.isnan(zeta)] = 0
         renter_ind1 = zeta > 0
-        renter_ind = renter_ind1 - cannot_rent
+        renter_ind = renter_ind1*(1-cannot_rent)
 
-        # recall that all renters are not bounded by min payment
+        # Recall that all renters are not bounded by min payment
         # hence thier FOC is the extra_pay FOC
         extra_pay_ind = extra_pay_ind1 * (1 - renter_ind)\
             + renter_ind
@@ -2107,13 +2111,12 @@ def worker_solver_factory(og, gen_R_pol):
                 d0(U3, Q_DC_P), d0(U4, Q_DC_P),\
                 d0(L, Q_DC_P), d0(V, Q_DC_P), d0(U, Q_DC_P)
 
-        UC_prime[UC_prime<=0] = 1e-250
-        UC_prime_H[UC_prime_H<=0]= 1e-250
-        UC_prime_HFC[UC_prime_HFC<=0] = 1e-250
-        UC_prime_M[UC_prime_M<=0] = 1e-250
-        Lambda[Lambda<=0]= 1e-250
-        VF[VF<=0] = 1e-250
-        UF[UF<=0] = 1e-250
+        #UC_prime[UC_prime<=0] = 1e-250
+        #UC_prime_H[UC_prime_H<=0]= 1e-250
+        #UC_prime_HFC[UC_prime_HFC<=0] = 1e-250
+        #UC_prime_M[UC_prime_M<=0] = 1e-250
+        #Lambda[Lambda<=0]= 1e-250
+
         return UC_prime, UC_prime_H, UC_prime_HFC, UC_prime_M, Lambda, VF, UF
 
     # Define function to solve worker policies via backward iteration
@@ -2123,28 +2126,22 @@ def worker_solver_factory(og, gen_R_pol):
         if load_ret == 1:
 
             ret_pols = pickle.load(open("{}/ret_pols.pol".format(ret_path), "rb"))
-            (a_noadj, c_noadj, etas_noadj, a_adj_uniform, c_adj_uniform,
-             H_adj_uniform, zeta_nl, c_adj_uniform_nl, H_adj_uniform_nl,
-             h_prime_rent, UC_prime, UC_prime_H,
-             UC_prime_HFC, UC_prime_M, Lambda, VF) = ret_pols
+            (UC_prime, UC_prime_H,UC_prime_HFC, UC_prime_M, Lambda, VF) = ret_pols
 
         else:
-            a_noadj, c_noadj, etas_noadj, a_adj_uniform, c_adj_uniform,\
-                H_adj_uniform, zeta_nl, c_adj_uniform_nl, H_adj_uniform_nl,\
-                h_prime_rent, UC_prime, UC_prime_H,\
-                UC_prime_HFC, UC_prime_M, Lambda, VF = gen_R_pol()
+                #a_noadj, c_noadj, etas_noadj, a_adj_uniform, c_adj_uniform,\
+                #H_adj_uniform, zeta_nl, c_adj_uniform_nl, H_adj_uniform_nl,\
+                #h_prime_rent
 
-            ret_pols = (a_noadj, c_noadj, etas_noadj, a_adj_uniform,
-                        c_adj_uniform, H_adj_uniform, zeta_nl,
-                        c_adj_uniform_nl, H_adj_uniform_nl, h_prime_rent,
-                        UC_prime, UC_prime_H, UC_prime_HFC, UC_prime_M,
-                        Lambda, VF)
+            UC_prime, UC_prime_H,UC_prime_HFC, UC_prime_M, Lambda, VF = gen_R_pol()
+
+            ret_pols = (UC_prime, UC_prime_H,UC_prime_HFC, UC_prime_M, Lambda, VF)
             pickle.dump(ret_pols, open("{}/ret_pols.pol".format(ret_path), "wb"))
 
         UF = VF
 
         start1 = time.time()
-        for Age in np.arange(55, int(R))[::-1]:
+        for Age in np.arange(int(tzero), int(R))[::-1]:
 
             start = time.time()
             t = Age
@@ -2255,8 +2252,8 @@ def worker_solver_factory(og, gen_R_pol):
                 .astype(np.float32)
             policy_etas_noadj[int(t - tzero), :] = etas_noadj\
                 .astype(np.float32)
-            policy_zeta[int(t - tzero), :] = zeta.reshape(all_state_shape_hat)
-            policy_H_rent[int(t - tzero), :] = H_rent
+            policy_zeta[int(t - tzero), :] = zeta.reshape(all_state_shape_hat).astype(np.float32)
+            policy_H_rent[int(t - tzero), :] = H_rent.astype(np.float32)
 
             if t == tzero:
                 policy_VF[:] = VF.reshape(
@@ -2276,8 +2273,7 @@ def worker_solver_factory(og, gen_R_pol):
         return [policy_C_noadj, policy_etas_noadj, policy_Aprime_noadj,
                 policy_C_adj, policy_H_adj, policy_Aprime_adj,
                 policy_H_rent, policy_zeta,
-                policy_Xi_cov, policy_Xi_copi, policy_VF,
-                UC_prime_B, UC_prime_H_B]
+                policy_Xi_cov, policy_Xi_copi, policy_VF]
 
     return solve_LC_model
 
