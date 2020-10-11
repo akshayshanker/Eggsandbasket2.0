@@ -273,8 +273,8 @@ def genprofiles_operator(og,
 
         #print(points_plan_choice)
         
-        vdcfunc = policy_VF[1,E_ind,alpha_ind,beta_ind,0,:].astype(np.float64)
-        vdbfunc = policy_VF[0,E_ind,alpha_ind,beta_ind,0,:].astype(np.float64)
+        vdcfunc = policy_VF[1,E_ind,alpha_ind,beta_ind,0,:]
+        vdbfunc = policy_VF[0,E_ind,alpha_ind,beta_ind,0,:]
         #print(vdcfunc.shape)
 
         V_DC = eval_linear(X_cont_W, \
@@ -294,12 +294,12 @@ def genprofiles_operator(og,
         Prob_DC = np.exp(V_DC_scaled)/(np.exp(V_DB_scaled)\
                         +   np.exp(V_DC_scaled ) )    
 
-        #account_ind = int(np.searchsorted(
-        #                                np.cumsum(np.array([1-Prob_DC,\
-        #                                                     Prob_DC])),\
-        #                                                    DBshock))
+        account_ind = int(np.searchsorted(
+                                        np.cumsum(np.array([1-Prob_DC,\
+                                                             Prob_DC])),\
+                                                            DBshock))
 
-        account_ind = 1
+        #account_ind = 1
 
         for t in range(int(tzero), int(length)+1):
             if t<R:
@@ -437,13 +437,14 @@ def genprofiles_operator(og,
                                                     alpha_ind,\
                                                     beta_ind,\
                                                     Pi_ind,:]
+
                     adj_points = np.array([DC_prime,q,TS_M,\
                                                 wealth_adj])
 
                     TS_C = min(max(C_min,eval_linear(X_QH_W_TS,\
                                                 c_prime_adj_func,\
                                                 adj_points,  xto)), C_max)
-                    TS_M_1 = min(max(H_min, eval_linear(X_QH_W_TS,\
+                    TS_H_1 = min(max(H_min, eval_linear(X_QH_W_TS,\
                                                     H_adj_func,\
                                                     adj_points,  xto)), H_max)
                     TS_A_1 = min(max(A_min, eval_linear(X_QH_W_TS,\

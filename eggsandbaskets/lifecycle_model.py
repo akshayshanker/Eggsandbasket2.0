@@ -705,6 +705,7 @@ if __name__ == "__main__":
     with open("settings.yml", "r") as stream:
         eggbasket_config = yaml.safe_load(stream)
 
+    """
     import ray 
     ray.init(num_cpus = 2)
 
@@ -732,11 +733,11 @@ if __name__ == "__main__":
             open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "wb"))
 
 
-    pickle.dump(results_DC, \
-            open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "wb"))
-
-    #results_DC = pickle.load(open("/scratch/pv33/ls_model_temp/DB_lite.pols", "rb"))
-    #results_DB = pickle.load(open("/scratch/pv33/ls_model_temp/DB_lite.pols", "rb"))
+    pickle.dump(policies, \
+            open("/scratch/pv33/ls_model_temp/baseline_lite_DC2.pols", "wb"))
+    """
+    results_DC = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "rb"))
+    results_DB = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "rb"))
 
 
     joined_pols = []
@@ -747,26 +748,27 @@ if __name__ == "__main__":
     #pickle.dump(joined_pols, \
     #            open("/scratch/pv33/ls_model_temp/baseline_lite.pols", "wb"))
 
-    #acc_ind = 0
-    #og = LifeCycleModel(eggbasket_config['baseline_lite'],
-    #                np.array([acc_ind]))
+    acc_ind = 0
+    og = LifeCycleModel(eggbasket_config['baseline_lite'],
+                    np.array([acc_ind]))
+
 
     #joined_pols = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite.pols", "rb"))
 
 
-    #TSN = 200
-    #U = np.random.rand(6,100,TSN,100) 
+    TSN = 100
+    U = np.random.rand(6,100,TSN,100) 
 
-    #TSALL_10_df, TSALL_14_df = gen_panel_ts(og, joined_pols,U, TSN)
+    TSALL_10_df, TSALL_14_df = gen_panel_ts(og, joined_pols,U, TSN)
     
 
 
-    #moments_male        = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
+    moments_male        = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
 
-    #moments_female      = gen_moments(copy.copy(TS1), copy.copy(TS2)).add_suffix('_female')
+    moments_female      = gen_moments(copy.copy(TS1), copy.copy(TS2)).add_suffix('_female')
 
 
-    #moments_sim_sorted    = sortmoments(moments_male,\
-    #                                     moments_female)
+    moments_sim_sorted    = sortmoments(moments_male,\
+                                         moments_female)
 
     
