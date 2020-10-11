@@ -736,12 +736,12 @@ def worker_solver_factory(og, gen_R_pol):
         # Interpolate
         for i in prange(len(assets_reshaped_1)):
 
-            a_prime_points = np.take(A, np.argsort(assets_reshaped_1[i]))
+            a_prime_points = np.take(A[~np.isnan(assets_reshaped_1[i])], np.argsort(assets_reshaped_1[i]))
             
             Aprime_noadjust_1[i] = interp_as(assets_reshaped_1[i],
                                              a_prime_points,
                                              A)
-            c_prime_points = np.take(cons_reshaped_1[i],
+            c_prime_points = np.take(cons_reshaped_1[i][~np.isnan(assets_reshaped_1[i])],
                                      np.argsort(assets_reshaped_1[i]))
 
             
@@ -750,7 +750,7 @@ def worker_solver_factory(og, gen_R_pol):
                                      A)
 
             Aprime_noadjust_1[i][Aprime_noadjust_1[i] < 0] = A_min
-            eta_prime_points = np.take(etas_reshaped_1[i],
+            eta_prime_points = np.take(etas_reshaped_1[i][~np.isnan(assets_reshaped_1[i])],
                                        np.argsort(assets_reshaped_1[i]))
 
             etas_primes_1[i] = interp_as(assets_reshaped_1[i],
@@ -1018,12 +1018,12 @@ def worker_solver_factory(og, gen_R_pol):
             # RHS with min payment
             min_pay_points = np.array([a_prime,\
                                     (1 - amort_rate(t - 2)) * m])
-            ucmprime_m_minp = max(1e-250,
+            ucmprime_m_minp = max(1e-200,
                                   beta * eval_linear(X_cont_WAM,
                                                      mfunc_uc_m_prime,
                                                      min_pay_points,
                                                      xto.LINEAR))
-            uc_prime_minp = max(1e-250,
+            uc_prime_minp = max(1e-200,
                                 beta * eval_linear(X_cont_WAM,
                                                    mfunc_ucprime,
                                                    min_pay_points,
@@ -1031,12 +1031,12 @@ def worker_solver_factory(og, gen_R_pol):
 
             # RHS with full payment
             max_pay_points = np.array([a_prime, 0])
-            ucmprime_m_fp = max(1e-250, beta
+            ucmprime_m_fp = max(1e-200, beta
                                 * eval_linear(X_cont_WAM,
                                               mfunc_uc_m_prime,
                                               max_pay_points,
                                               xto.LINEAR))
-            uc_prime_fp = max(1e-250, beta
+            uc_prime_fp = max(1e-200, beta
                               * eval_linear(X_cont_WAM,
                                             mfunc_ucprime,
                                             max_pay_points,
@@ -1044,18 +1044,18 @@ def worker_solver_factory(og, gen_R_pol):
 
             # Step 1: check if constrained by min payment
             if m == 0:
-                c_t = max(C_min, uc_inv(uc_prime_fp, h, alpha_housing))
+                c_t = min(C_max,max(C_min, uc_inv(uc_prime_fp, h, alpha_housing)))
                 m_prime = 0
                 UC_prime_RHS = uc_prime_fp
 
             elif uc_prime_minp >= ucmprime_m_minp:
-                c_t = uc_inv(uc_prime_minp, h, alpha_housing)
+                c_t = min(C_max,max(C_min,uc_inv(uc_prime_minp, h, alpha_housing)))
                 m_prime = (1 - amort_rate(t - 2)) * m
                 UC_prime_RHS = uc_prime_minp
 
             # Step 2: check if constrainte by full payment
             elif uc_prime_fp <= ucmprime_m_fp:
-                c_t = max(C_min, uc_inv(uc_prime_fp, h, alpha_housing))
+                c_t = min(max(C_min, uc_inv(uc_prime_fp, h, alpha_housing)), C_max)
                 m_prime = 0
                 UC_prime_RHS = uc_prime_fp
 
@@ -1068,7 +1068,7 @@ def worker_solver_factory(og, gen_R_pol):
                                                       mfunc_ucprime,
                                                       np.array([a_prime, m_prime]),
                                                       xto.LINEAR))
-                c_t = min(max(C_min, uc_inv(UC_prime_RHS, h, alpha_housing)), C_max)
+                c_t = min(C_max,max(C_min, uc_inv(UC_prime_RHS, h, alpha_housing)))
 
             extra_payment = max(0, (1 - amort_rate(t - 2)) * m - m_prime)
             min_constrained = extra_payment == 0\
@@ -1155,7 +1155,7 @@ def worker_solver_factory(og, gen_R_pol):
 
         return C_noadj, etas_noadj, Aprime_noadj
 
-    @njit(parallel=True, nogil=True)
+    @njit
     def eval_policy_W_adj(t, mort_func,
                           UC_prime_func,
                           UC_prime_H_func,
@@ -1320,7 +1320,7 @@ def worker_solver_factory(og, gen_R_pol):
                                             xtol= 1e-05)[0],
                                         A_min)
 
-                C[i] = max(
+                C[i] = min(C_max,max(
                     C_min,
                     HA_FOC(
                         A_prime[i],
@@ -1337,7 +1337,7 @@ def worker_solver_factory(og, gen_R_pol):
                         UC_prime_HFC_func2D,
                         UC_prime_M_func2D,
                         t,
-                        ret_cons=True))
+                        ret_cons=True)))
                 m_prime_adj = interp_as(A, mort_func1D,
                                         np.array([A_prime[i]]),
                                         extrap = True)[0]
@@ -1357,8 +1357,8 @@ def worker_solver_factory(og, gen_R_pol):
             # mortage with binding liquid assett FOC at A_min
             elif H_FOC(C_min, *args_eval_c)\
                     * H_FOC(C_max, *args_eval_c) < 0:
-                C_at_amin = max(brentq(H_FOC, C_min, C_max,
-                                       args=args_eval_c, xtol = 1e-05)[0], C_min)
+                C_at_amin = min(C_max,max(brentq(H_FOC, C_min, C_max,
+                                       args=args_eval_c, xtol = 1e-05)[0], C_min))
 
                 m_prime_adj_at_amin1 = interp_as(A, mort_func1D,
                                                 np.array([A_min]),extrap = True)[0]
@@ -1517,7 +1517,7 @@ def worker_solver_factory(og, gen_R_pol):
         for i in prange(len(H_rent)):
             rent_vals_small1[i, :, 0] = eval_linear(X_QH_W,
                                                     H_rent[i],
-                                                    points_rent[i])
+                                                    points_rent[i], xto.LINEAR)
             rent_vals_small1[i, :, 1] = points_rent[i, :, 0]
 
         rent_vals_small2 = np.copy(rent_vals_small1)\
@@ -1563,7 +1563,7 @@ def worker_solver_factory(og, gen_R_pol):
         # Generate indicator function for non-adjuster (|eta|<=1)
         eta_vals = np.abs(noadj_vals[:, 1])
         eta_vals[np.isnan(eta_vals)] = 0
-        etas_ind = np.copy(np.where(eta_vals <= 1, 1, 0)).astype(np.float64)
+        etas_ind = np.where(eta_vals <= 1, 1, 0)
 
         # Generate policies for non-renters
         # eta*no-adjust + (1-eta)*adjust
@@ -1585,6 +1585,7 @@ def worker_solver_factory(og, gen_R_pol):
         extra_pay = (1 - etas_ind) * adj_vals[:, 3]\
             + etas_ind * noadj_vals[:, 3]
         adcprime = adj_vals[:, 4]
+        extra_pay[np.isnan(extra_pay)]= 0
 
         # Renter polices
         h_prime_rent = rent_vals[:, 0]
@@ -1612,6 +1613,7 @@ def worker_solver_factory(og, gen_R_pol):
                              h_prime_rent, X_all_ind_W_vals[:, 0])
         ufunc_rent = u_vec(c_prime_rent,
                            h_prime_rent, X_all_ind_W_vals[:, 0])
+        #print(np.sum(np.isnan(ufunc_rent)))
 
         return c_prime_norent_vals, h_prime_norent_vals, a_prime_norent_vals,\
             ucfunc_norent, ufunc_norent, extra_pay, etas_ind,\
@@ -1691,6 +1693,8 @@ def worker_solver_factory(og, gen_R_pol):
                                                         no_rent_points_p[i],
                                                         xto.LINEAR)
 
+            #print(np.sum(np.isnan(val_func_vals_norent)))
+
             # check: should bequest value go here?
             VF_B_norent[i, :] = UF_B_norent[i, :] + val_func_vals_norent[:, 0]
 
@@ -1706,6 +1710,7 @@ def worker_solver_factory(og, gen_R_pol):
                                                       V_funcs[i],
                                                       rent_points_p[i],
                                                       xto.LINEAR)
+            #print(np.sum(np.isnan(val_func_vals_rent)))
 
             Lambda_B_rent[i, :] = val_func_vals_rent[:, 1]
             VF_B_rent[i, :] = UF_B_rent[i, :]\
@@ -1836,6 +1841,8 @@ def worker_solver_factory(og, gen_R_pol):
         renter_ind1 = zeta > 0
         renter_ind = renter_ind1*(1-cannot_rent)
 
+        renter_ind[np.isnan(renter_ind)] =0
+
         # Recall that all renters are not bounded by min payment
         # hence thier FOC is the extra_pay FOC
         extra_pay_ind = extra_pay_ind1 * (1 - renter_ind)\
@@ -1872,6 +1879,8 @@ def worker_solver_factory(og, gen_R_pol):
             + (1 - renter_ind) * Xi_norent
         UF_B = renter_ind * UF_B_rent\
             + (1 - renter_ind) * UF_B_norent
+
+        print(np.sum(np.isnan(VF_B)))
 
         return UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
             Lambda_B, VF_B, Xi, UF_B, zeta

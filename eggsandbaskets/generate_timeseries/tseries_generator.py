@@ -954,7 +954,7 @@ def sortmoments(moments_male, moments_female):
                         moments_male['corr_nondef_share_adj_vol_cont_adj_DC_wave14_male'],
                         moments_male['corr_nondef_share_adj_vol_cont_adj_DB_wave14_male'],
                         moments_female['corr_nondef_share_adj_vol_cont_adj_DC_wave14_female'],
-                        moments_female['corr_nondef_share_adj_vol_cont_adj_DB_wave14_female']
+                        moments_female['corr_nondef_share_adj_vol_cont_adj_DB_wave14_female'],
                         moments_male['corr_nondef_share_adj_vol_cont_adj_DC_wave10_male'],
                         moments_male['corr_nondef_share_adj_vol_cont_adj_DB_wave10_male'],
                         moments_female['corr_nondef_share_adj_vol_cont_adj_DC_wave10_female'],

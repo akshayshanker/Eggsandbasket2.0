@@ -187,7 +187,7 @@ def d0(v1,v2):
     return out
 
 @njit
-def interp_as(xp,yp,x, extrap= True):
+def interp_as(xp,yp,x, extrap= False):
 
     """Function  interpolates 1D
     with linear extraplolation 
