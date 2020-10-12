@@ -705,8 +705,7 @@ if __name__ == "__main__":
     with open("settings.yml", "r") as stream:
         eggbasket_config = yaml.safe_load(stream)
 
-    """
-    import ray 
+        import ray 
     ray.init(num_cpus = 2)
 
     @ray.remote
@@ -733,11 +732,11 @@ if __name__ == "__main__":
             open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "wb"))
 
 
-    pickle.dump(policies, \
-            open("/scratch/pv33/ls_model_temp/baseline_lite_DC2.pols", "wb"))
-    """
-    results_DC = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "rb"))
-    results_DB = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "rb"))
+    pickle.dump(results_DC, \
+            open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "wb"))
+    
+    #results_DC = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "rb"))
+    #results_DB = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "rb"))
 
 
     joined_pols = []
@@ -745,6 +744,7 @@ if __name__ == "__main__":
       joined_pols.append(np.concatenate((results_DB[i],results_DC[i]), axis =1))
 
 
+    joined_pols[10]= np.concatenate((results_DB[10],results_DC[10]), axis =0)
     #pickle.dump(joined_pols, \
     #            open("/scratch/pv33/ls_model_temp/baseline_lite.pols", "wb"))
 
@@ -761,11 +761,9 @@ if __name__ == "__main__":
 
     TSALL_10_df, TSALL_14_df = gen_panel_ts(og, joined_pols,U, TSN)
     
-
-
     moments_male        = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
 
-    moments_female      = gen_moments(copy.copy(TS1), copy.copy(TS2)).add_suffix('_female')
+    moments_female      = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
 
 
     moments_sim_sorted    = sortmoments(moments_male,\

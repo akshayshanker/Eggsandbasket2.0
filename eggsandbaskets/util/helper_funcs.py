@@ -126,7 +126,7 @@ def gen_policyout_arrays(og):
                             grid_size_M,\
                             len(Pi)))
 
-    policy_VF =   np.zeros((int(R)-int(tzero),len(DB), grid_size_W, grid_size_alpha,\
+    policy_VF =   np.zeros((len(DB), grid_size_W, grid_size_alpha,\
                                     grid_size_beta,len(Pi),
                                     grid_size_A,\
                                     grid_size_DC,grid_size_H,\

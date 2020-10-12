@@ -103,7 +103,7 @@ baseline_lite:
     C_min: 1.0e-10
     DC_max: 20.0
     DC_min: .1
-    H_max: 15.0
+    H_max: 20.0
     HS_max: 20.0
     H_min: 1.0e-5
     ID: 188198904234
@@ -114,21 +114,21 @@ baseline_lite:
     R: 64.0
     T: 99.0
     alpha: 1.0
-    alpha_bar: 0.6
-    beta_bar: 0.97
+    alpha_bar: 0.4
+    beta_bar: 0.91
     beta_m: 3.0
     def_pi: 0.7
     delta_housing: 0.01
     f_ACF: 0.8625
     f_ASF: 1.0
     f_LSF: 0.23
-    gamma: 1.7864923287417456
+    gamma: 4.5
     grid_size_A: 15.0
     grid_size_C: 15.0
     grid_size_DC: 6.0
     grid_size_DCR: 2.0
     grid_size_H: 15
-    grid_size_HS: 100
+    grid_size_HS: 50
     grid_size_M: 15.0
     grid_size_Q: 6.0
     grid_size_Q_s: 2.0
