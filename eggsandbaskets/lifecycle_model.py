@@ -24,20 +24,14 @@ import numpy as np
 from numba import njit, prange, guvectorize, jit
 import time
 
-
+import dill as pickle 
 from sklearn.utils.extmath import cartesian
 from quantecon import tauchen
-from quantecon.optimize.root_finding import brentq
-from itertools import product
 from interpolation.splines import UCGrid, CGrid, nodes, eval_linear
-from interpolation import interp
-from interpolation.splines import extrap_options as xto
 
-from matplotlib.colors import DivergingNorm
-import matplotlib.colors as mcolors
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
 
+import warnings
+warnings.filterwarnings('ignore')
 from util.ls_model_functions import lsmodel_function_factory
 
 
@@ -90,6 +84,7 @@ class LifeCycleModel:
     def __init__(self,
                  config,        # Settings
                  acc_ind,       # Grid of accound ind
+                 mod_name = 'test', 
                  ):
         self.parameters = self.ModelParameters(config)
         self.functions = self.ModelFunctions(config)
@@ -99,15 +94,20 @@ class LifeCycleModel:
         self.cart_grids = self.ModelCartGrids(self.grid1d,
                                               self.st_grid,
                                               self.parameters)
-        self.big_grids = self.BigAssGrids(self.grid1d,
-                                          self.st_grid,
-                                          self.parameters)
+        self.BigAssGrids = self.BigAssGrids(self.grid1d, self.st_grid, self.parameters)
+
+        self.acc_ind = acc_ind
+        self.mod_name = mod_name
 
         #self.parameters.phi_r = eval_rent_share(self.st_grid.Q_shocks_r,
        #                                        self.parameters.r,
        #                                         self.parameters.r_H,
        #                                         self.parameters.r_l,
        #                                         self.parameters.beta_m)
+
+        self.ID = time.strftime("%Y%m%d-%H%M%S") +'_'+mod_name+'_' + format(acc_ind[0])
+
+        
 
     class ModelParameters:
 
@@ -145,6 +145,8 @@ class LifeCycleModel:
             self.grid_size_DC = int(parameters['grid_size_DC'])
             self.grid_size_W = int(parameters['grid_size_W'])
             self.grid_size_HS = int(parameters['grid_size_HS'])
+
+
 
     class ModelFunctions:
 
@@ -483,7 +485,7 @@ class LifeCycleModel:
                                          stochgrids.Q_shocks_r])
 
     class BigAssGrids:
-        def __init__(self, grid1d, stochgrids, param):
+        def __init__(self,grid1d, stochgrids, param):
             """ Large cartesian grids for the LS model
 
             X_all_hat_vals : 10D array
@@ -503,121 +505,170 @@ class LifeCycleModel:
 
             """
             # Construct large grids i.e. state-spaces
-            X_all_hat_ind \
-                = cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
-                             np.arange(len(stochgrids.alpha_hat)),
-                             np.arange(len(stochgrids.beta_hat)),
-                             np.arange(len(grid1d.Pi)),
-                             np.arange(param.grid_size_A),
-                             np.arange(param.grid_size_DC),
-                             np.arange(param.grid_size_H),
-                             np.arange(param.grid_size_Q),
-                             np.arange(param.grid_size_M)])
-            X_all_hat_vals \
-                = cartesian([np.array([np.float64(grid1d.DB)]),
-                             stochgrids.E,
-                             stochgrids.alpha_hat,
-                             stochgrids.beta_hat,
-                             grid1d.Pi, grid1d.A,
-                             grid1d.A_DC, grid1d.H,
-                             grid1d.Q, grid1d.M])
-
-            self.X_all_hat_ind = X_all_hat_ind
-            self.X_all_hat_vals = X_all_hat_vals
-            self.X_all_C_ind\
-                = cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
-                             np.arange(len(stochgrids.alpha_hat)),
-                             np.arange(len(stochgrids.beta_hat)),
-                             np.arange(len(grid1d.Pi)),
-                             np.arange(param.grid_size_A),
-                             np.arange(param.grid_size_DC),
-                             np.arange(param.grid_size_H),
-                             np.arange(param.grid_size_Q)])
-            self.X_all_C_vals\
-                = cartesian([np.array([np.float64(grid1d.DB)]),
-                             stochgrids.E,
-                             stochgrids.alpha_hat,
-                             stochgrids.beta_hat,
-                             grid1d.Pi, grid1d.A,
-                             grid1d.A_DC, grid1d.H,
-                             grid1d.Q])
-            self.X_all_B_ind \
-                = cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
-                             np.arange(len(stochgrids.alpha_hat)),
-                             np.arange(len(stochgrids.beta_hat)),
-                             np.arange(len(grid1d.Pi)),
-                             np.arange(param.grid_size_DC),
-                             np.arange(param.grid_size_HS),
-                             np.arange(param.grid_size_Q)])
-            self.X_all_B_vals\
-                = cartesian([np.array([np.float64(grid1d.DB)]),
-                             stochgrids.E,
-                             stochgrids.alpha_hat,
-                             stochgrids.beta_hat,
-                             grid1d.Pi,
-                             grid1d.A_DC, grid1d.H_R,
-                             grid1d.Q])
-            self.X_V_func_DP_vals\
-                = cartesian([grid1d.V,
-                             grid1d.A,
-                             grid1d.A_DC,
-                             grid1d.H,
-                             grid1d.M])
-            self.X_V_func_CR_vals \
-                = cartesian([np.array([np.float64(grid1d.DB)]),
-                             stochgrids.E,
-                             stochgrids.alpha_hat,
-                             stochgrids.beta_hat,
-                             grid1d.Pi,
-                             grid1d.Q])
-            self.X_all_ind\
-                = cartesian([grid1d.DB,
-                             np.arange(len(stochgrids.E)),
-                             np.arange(len(stochgrids.alpha_hat)),
-                             np.arange(len(stochgrids.beta_hat)),
-                             np.arange(len(grid1d.V)),
-                             np.arange(len(grid1d.Pi)),
-                             np.arange(param.grid_size_A),
-                             np.arange(param.grid_size_DC),
-                             np.arange(param.grid_size_H),
-                             np.arange(param.grid_size_Q),
-                             np.arange(param.grid_size_M)])
-            self.X_adj_func_ind\
-                = cartesian([grid1d.DB,
-                             np.arange(len(stochgrids.E)),
-                             np.arange(len(stochgrids.alpha_hat)),
-                             np.arange(len(stochgrids.beta_hat)),
-                             np.arange(len(grid1d.Pi)),
-                             np.arange(param.grid_size_Q),
-                             np.arange(param.grid_size_M)])
-            self.X_nadj_func_ind \
-                = cartesian([grid1d.DB,
-                             np.arange(len(stochgrids.E)),
-                             np.arange(len(stochgrids.alpha_hat)),
-                             np.arange(len(stochgrids.beta_hat)),
-                             np.arange(len(grid1d.Pi)),
-                             np.arange(param.grid_size_H),
-                             np.arange(param.grid_size_Q),
-                             np.arange(param.grid_size_M)])
-            self.X_W_bar_hdjex_ind\
-                = cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
-                             np.arange(len(stochgrids.alpha_hat)),
-                             np.arange(len(stochgrids.beta_hat)),
-                             np.arange(len(grid1d.Pi)),
-                             np.arange(param.grid_size_DC),
-                             np.arange(param.grid_size_HS),
-                             np.arange(param.grid_size_Q),
-                             np.arange(param.grid_size_M)])
-            self.X_W_bar_hdjex_vals \
-                = cartesian([np.array([np.float64(grid1d.DB)]),
-                             stochgrids.E,
-                             stochgrids.alpha_hat,
-                             stochgrids.beta_hat,
-                             grid1d.Pi,
-                             grid1d.A_DC, grid1d.H_R,
-                             grid1d.Q, grid1d.M])
+            self.stochgrids = stochgrids
+            self.grid1d = grid1d
+            self.param =param
 
 
+
+
+        def X_all_hat_ind_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          X_all_hat_ind \
+              = cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
+                           np.arange(len(stochgrids.alpha_hat)),
+                           np.arange(len(stochgrids.beta_hat)),
+                           np.arange(len(grid1d.Pi)),
+                           np.arange(param.grid_size_A),
+                           np.arange(param.grid_size_DC),
+                           np.arange(param.grid_size_H),
+                           np.arange(param.grid_size_Q),
+                           np.arange(param.grid_size_M)])
+
+          return X_all_hat_ind
+
+        def X_all_C_ind_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          X_all_C_ind\
+            = cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
+                         np.arange(len(stochgrids.alpha_hat)),
+                         np.arange(len(stochgrids.beta_hat)),
+                         np.arange(len(grid1d.Pi)),
+                         np.arange(param.grid_size_A),
+                         np.arange(param.grid_size_DC),
+                         np.arange(param.grid_size_H),
+                         np.arange(param.grid_size_Q)])
+          return X_all_C_ind
+
+        def X_all_C_vals_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          X_all_C_vals\
+            = cartesian([np.array([np.float64(grid1d.DB)]),
+                         stochgrids.E,
+                         stochgrids.alpha_hat,
+                         stochgrids.beta_hat,
+                         grid1d.Pi, grid1d.A,
+                         grid1d.A_DC, grid1d.H,
+                         grid1d.Q])
+          return X_all_C_vals
+
+        def X_all_B_ind_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          X_all_B_ind \
+              = cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
+                           np.arange(len(stochgrids.alpha_hat)),
+                           np.arange(len(stochgrids.beta_hat)),
+                           np.arange(len(grid1d.Pi)),
+                           np.arange(param.grid_size_DC),
+                           np.arange(param.grid_size_HS),
+                           np.arange(param.grid_size_Q)])
+          return X_all_B_ind
+
+        def  X_all_B_vals_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          return cartesian([np.array([np.float64(grid1d.DB)]),
+                       stochgrids.E,
+                       stochgrids.alpha_hat,
+                       stochgrids.beta_hat,
+                       grid1d.Pi,
+                       grid1d.A_DC, grid1d.H_R,
+                       grid1d.Q])
+
+        def X_V_func_DP_vals_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          return cartesian([grid1d.V,
+                       grid1d.A,
+                       grid1d.A_DC,
+                       grid1d.H,
+                       grid1d.M])
+
+        def X_V_func_CR_vals_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          return cartesian([np.array([np.float64(grid1d.DB)]),
+                       stochgrids.E,
+                       stochgrids.alpha_hat,
+                       stochgrids.beta_hat,
+                       grid1d.Pi,
+                       grid1d.Q])
+        def X_all_ind_f(self, ret_len = False):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          if ret_len == False: 
+            return cartesian([grid1d.DB,
+                         np.arange(len(stochgrids.E)),
+                         np.arange(len(stochgrids.alpha_hat)),
+                         np.arange(len(stochgrids.beta_hat)),
+                         np.arange(len(grid1d.V)),
+                         np.arange(len(grid1d.Pi)),
+                         np.arange(param.grid_size_A),
+                         np.arange(param.grid_size_DC),
+                         np.arange(param.grid_size_H),
+                         np.arange(param.grid_size_Q),
+                         np.arange(param.grid_size_M)])
+          else:
+            return len(cartesian([grid1d.DB,
+                  np.arange(len(stochgrids.E)),
+                  np.arange(len(stochgrids.alpha_hat)),
+             np.arange(len(stochgrids.beta_hat)),
+             np.arange(len(grid1d.V)),
+             np.arange(len(grid1d.Pi)),
+             np.arange(param.grid_size_A),
+             np.arange(param.grid_size_DC),
+             np.arange(param.grid_size_H),
+             np.arange(param.grid_size_Q),
+             np.arange(param.grid_size_M)]))
+
+        
+        def X_adj_func_ind_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          return cartesian([grid1d.DB,
+                       np.arange(len(stochgrids.E)),
+                       np.arange(len(stochgrids.alpha_hat)),
+                       np.arange(len(stochgrids.beta_hat)),
+                       np.arange(len(grid1d.Pi)),
+                       np.arange(param.grid_size_Q),
+                       np.arange(param.grid_size_M)])
+        def X_nadj_func_ind_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          return cartesian([grid1d.DB,
+                       np.arange(len(stochgrids.E)),
+                       np.arange(len(stochgrids.alpha_hat)),
+                       np.arange(len(stochgrids.beta_hat)),
+                       np.arange(len(grid1d.Pi)),
+                       np.arange(param.grid_size_H),
+                       np.arange(param.grid_size_Q),
+                       np.arange(param.grid_size_M)])
+        def X_W_bar_hdjex_ind_f(self):
+          stochgrids = self.stochgrids
+          grid1d = self.grid1d
+          param = self.param
+          return cartesian([grid1d.DB, np.arange(len(stochgrids.E)),
+                       np.arange(len(stochgrids.alpha_hat)),
+                       np.arange(len(stochgrids.beta_hat)),
+                       np.arange(len(grid1d.Pi)),
+                       np.arange(param.grid_size_DC),
+                       np.arange(param.grid_size_HS),
+                       np.arange(param.grid_size_Q),
+                       np.arange(param.grid_size_M)])
 
 def plot_policy_W(policy, og, acc_ind):
 
@@ -701,6 +752,11 @@ if __name__ == "__main__":
     from util.randparam import rand_p_generator
     from generate_timeseries.tseries_generator import gen_panel_ts, gen_moments, sortmoments, genprofiles_operator
     import copy
+
+    from matplotlib.colors import DivergingNorm
+    import matplotlib.colors as mcolors
+    import matplotlib.cm as cm
+    import matplotlib.pyplot as plt
     # read settings
     with open("settings.yml", "r") as stream:
         eggbasket_config = yaml.safe_load(stream)
@@ -711,11 +767,13 @@ if __name__ == "__main__":
     @ray.remote
     def run_acc_in(acc_ind):
       # Create housing model
+      if acc_ind == 0:
+        time.sleep(45)
       og = LifeCycleModel(eggbasket_config['baseline_lite'],
-                          np.array([1]))
+                          np.array([acc_ind]))
 
       # Solve model
-      policies = generate_worker_pols(og, load_retiree=0)
+      policies = generate_worker_pols(og, load_retiree=1)
 
       #plot_policy_W(policies, og)
 
@@ -729,28 +787,15 @@ if __name__ == "__main__":
     results_DB, results_DC = ray.get([results_DB_id,results_DC_id])
 
     pickle.dump(results_DB, \
-            open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "wb"))
+            open("/scratch/pv33/ls_model_temp/baseline_DBID.pols", "wb"))
 
 
     pickle.dump(results_DC, \
-            open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "wb"))
+           open("/scratch/pv33/ls_model_temp/baseline_DCID.pols", "wb"))
     
-    #results_DC = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DC.pols", "rb"))
-    #results_DB = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite_DB.pols", "rb"))
 
-
-    joined_pols = []
-    for i in range(len(results_DB)):
-      joined_pols.append(np.concatenate((results_DB[i],results_DC[i]), axis =1))
-
-
-    joined_pols[10]= np.concatenate((results_DB[10],results_DC[10]), axis =0)
-    #pickle.dump(joined_pols, \
-    #            open("/scratch/pv33/ls_model_temp/baseline_lite.pols", "wb"))
-
-    acc_ind = 0
     og = LifeCycleModel(eggbasket_config['baseline_lite'],
-                    np.array([acc_ind]))
+                          np.array([acc_ind]))
 
 
     #joined_pols = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_lite.pols", "rb"))

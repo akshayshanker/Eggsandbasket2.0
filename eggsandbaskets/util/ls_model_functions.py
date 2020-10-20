@@ -69,12 +69,12 @@ def lsmodel_function_factory(parameters,
 
 		return (1-alpha)*(c**(gamma*(alpha-1) - alpha))*(h**(alpha*(1-gamma)))
 
-	@njit
+	#@njit
 	def uc_vec(c,h, alpha):
 
 		return (1-alpha)*(np.power(c,(gamma*(alpha-1) - alpha)))*(np.power(h,(alpha*(1-gamma)))) 
 
-	@njit
+	#@njit
 	def u_vec(c,h, alpha):
 
 		return ((np.power(c,((1-gamma)*(1-alpha)))*(np.power(h,(alpha*(1-gamma)))))-1)/(1-gamma) 

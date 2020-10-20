@@ -491,19 +491,16 @@ def genprofiles_operator(og,
         return wave_data_10, wave_data_14
     
     #@njit
-    def generate_TS(U,N,pol_array):
-
-        policy_c_noadj = np.copy(pol_array[0].astype(np.float64))
-        etas_noadj = np.copy(pol_array[1].astype(np.float64))
-        policy_a_noadj = np.copy(pol_array[2].astype(np.float64))
-        policy_c_adj = np.copy(pol_array[3].astype(np.float64))
-        policy_h_adj = np.copy(pol_array[4].astype(np.float64))
-        policy_a_adj = np.copy(pol_array[5].astype(np.float64))
-        policy_h_rent = np.copy(pol_array[6].astype(np.float64))
-        policy_zeta = np.copy(pol_array[7].astype(np.float64))
-        policy_Xi_cov = np.copy(pol_array[8].astype(np.float64))
-        policy_Xi_copi = np.copy(pol_array[9].astype(np.float64))
-        policy_VF = np.copy(pol_array[10].astype(np.float64))
+    def generate_TS(U,N,policy_c_noadj,\
+                        etas_noadj,\
+                        policy_a_noadj,\
+                        policy_c_adj,\
+                        policy_h_adj,\
+                        policy_a_adj,\
+                        policy_h_rent,\
+                        policy_zeta,\
+                        policy_Xi_cov,\
+                        policy_Xi_copi):
 
         TSALL_10 = np.zeros((int((int(R)-int(tzero))*N*2),21))
         TSALL_14 = np.zeros((int((int(R)-int(tzero))*N*2),21))
@@ -567,9 +564,72 @@ def genprofiles_operator(og,
 
         return TSALL_10, TSALL_14
 
+    def gen_pol_array():
+        """ Generates a policy array from 
+        HD files"""
+        policy_c_noadj = []
+        etas_noadj = []
+        policy_a_noadj = []
+        policy_c_adj = []
+        policy_h_adj = []
+        policy_a_adj = []
+        policy_h_rent = []
+        policy_zeta = []
+        policy_Xi_cov = []
+        policy_Xi_copi = []
+
+        for Age in np.arange(int(tzero), int(R))[::-1]:
+            with np.load("/scratch/pv33/ls_model_temp/age_{}_acc_{}_id_0_pols".\
+                        format(Age, og.ID)) as data:
+
+                     policy_c_adj.append(data['C_adj'])
+                     policy_h_adj.append(data['H_adj'])
+                     policy_a_adj.append(data['Aprime_adj'])
+                     policy_c_noadj.append(data['C_noadj'])
+                     etas_noadj.append(data['etas_noadj'])
+                     policy_a_noadj.append(data['Aprime_noadj'])
+                     policy_zeta.append(data['zeta'])
+                     policy_h_rent.append(data['H_rent'])
+                     policy_Xi_cov.append(data['Xi_cov'])
+                     policy_Xi_copi.append(data['Xi_copi'])
+
+                     if Age== tzero:
+                        policy_VF = data['Policy_VF']
+
+        for Age in np.arange(int(tzero), int(R))[::-1]:
+            with np.load("/scratch/pv33/ls_model_temp/age_{}_acc_{}_id_1_pols".\
+                        format(Age, og.acc_ind[0], og.ID)) as data:
+                     
+                 policy_c_adj[Age-tzero] = np.concatenate((policy_c_adj[Age-tzero], data['C_adj']))
+                 policy_h_adj[Age-tzero] = np.concatenate((policy_h_adj[Age-tzero], data['H_adj']))
+                 policy_a_adj[Age-tzero] = np.concatenate((policy_a_adj[Age-tzero], data['Aprime_adj']))
+                 policy_a_noadj[Age-tzero] = np.concatenate((policy_a_noadj[Age-tzero], data['Aprime_noadj']))
+                 etas_noadj[Age-tzero] = np.concatenate((etas_noadj[Age-tzero], data['etas_noadj']))
+                 policy_c_noadj[Age-tzero] = np.concatenate((policy_c_noadj[Age-tzero], data['C_noadj']))
+                 policy_zeta[Age-tzero] = np.concatenate((policy_zeta[Age-tzero], data['zeta']))
+                 policy_h_rent[Age-tzero] = np.concatenate((policy_h_rent[Age-tzero], data['H_rent']))
+                 policy_Xi_cov[Age-tzero] = np.concatenate((policy_Xi_cov[Age-tzero], data['Xi_cov']))
+                 policy_Xi_copi[Age-tzero] = np.concatenate((policy_Xi_copi[Age-tzero], data['Xi_copi']))
+
+                 if Age== tzero:
+                    policy_VF = np.concatenate((policy_VF, data['Policy_VF']))
+
+        return policy_c_noadj,\
+                etas_noadj,\
+                policy_a_noadj,\
+                policy_c_adj,\
+                policy_h_adj,\
+                policy_a_adj,\
+                policy_h_rent,\
+                policy_zeta,\
+                policy_Xi_cov,\
+                policy_Xi_copi
+
     def generate_TSDF(U,N,pol_array):
 
-        TSALL_10, TSALL_14 = generate_TS(U,N,pol_array)
+        policies = gen_pol_array()
+
+        TSALL_10, TSALL_14 = generate_TS(U,N,*policies)
 
         TSALL_10_df = pd.DataFrame(TSALL_10)
         TSALL_14_df = pd.DataFrame(TSALL_14)

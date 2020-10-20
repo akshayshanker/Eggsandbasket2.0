@@ -145,10 +145,10 @@ def gen_policyout_arrays(og):
 
     return all_state_shape,all_state_shape_hat, v_func_shape,\
             all_state_A_last_shape, policy_shape_nadj, policy_shape_adj,\
-            policy_Aprime_noadj, policy_C_noadj, policy_etas_noadj,\
-            policy_Aprime_adj, policy_C_adj, policy_H_adj,\
-            policy_Xi_cov, policy_Xi_copi, policy_VF,\
-            policy_zeta, policy_H_rent
+            #policy_Aprime_noadj, policy_C_noadj, policy_etas_noadj,\
+            #policy_Aprime_adj, policy_C_adj, policy_H_adj,\
+            #policy_Xi_cov, policy_Xi_copi, policy_VF,\
+            #policy_zeta, policy_H_rent
 
 @njit
 def sim_markov(P, P_stat, U):
@@ -269,25 +269,23 @@ def gen_reshape_funcs(og):
                                                     int(og.parameters.grid_size_alpha),\
                                                     int(og.parameters.grid_size_beta)
     
-    DB, V, Pi, X_W_bar_hdjex_ind                 = og.grid1d.DB, og.grid1d.V, og.grid1d.Pi, og.big_grids.X_W_bar_hdjex_ind
+    DB, V, Pi, X_W_bar_hdjex_ind                 = og.grid1d.DB, og.grid1d.V, og.grid1d.Pi, og.BigAssGrids.X_W_bar_hdjex_ind_f()
 
     EBA_P2                                       = og.cart_grids.EBA_P2
 
     all_state_shape,all_state_shape_hat, v_func_shape,\
-    all_state_A_last_shape, policy_shape_nadj, policy_shape_adj,\
-    policy_Aprime_noadj, policy_C_noadj, policy_etas_noadj,\
-    policy_Aprime_adj, policy_C_adj, policy_H_adj,\
-    policy_Xi_cov, policy_Xi_copi, policy_VF,policy_zeta, policy_H_rent\
-                                = gen_policyout_arrays(og)     
-
-    @njit
+    all_state_A_last_shape, policy_shape_nadj, policy_shape_adj = gen_policyout_arrays(og)  
+    #policy_Aprime_noadj, policy_C_noadj, policy_etas_noadj,\
+    #policy_Aprime_adj, policy_C_adj, policy_H_adj,\
+    #policy_Xi_cov, policy_Xi_copi, policy_VF,policy_zeta, policy_H_rent\
+                                   
     def reshape_out_pi(UC_in):
         """
         Reshapes 1D (flat 10D) array to 2D array with Pi values
         as cols and cart product of all other states as rows
         """
 
-        UC_in_1 = np.copy(UC_in).reshape((len(DB), grid_size_W,\
+        UC_in = UC_in.reshape((len(DB), grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
                                              len(V),\
@@ -300,9 +298,9 @@ def gen_reshape_funcs(og):
                                              ))
         
 
-        UC_in_2         = np.transpose(UC_in_1, (0,1,2,3,4,6,7,8,9,10,5) )
+        UC_in         = np.transpose(UC_in, (0,1,2,3,4,6,7,8,9,10,5) )
 
-        UC_out          = np.copy(UC_in_2).reshape(int(len(DB)*grid_size_W*\
+        UC_in          = UC_in.reshape(int(len(DB)*grid_size_W*\
                                              grid_size_alpha*\
                                              grid_size_beta*\
                                              len(V)*\
@@ -313,17 +311,15 @@ def gen_reshape_funcs(og):
                                              grid_size_M),\
                                              len(Pi))
 
-        return UC_out
+        return UC_in
     
-
-    @njit
     def reshape_out_V(UC_in):
         """
         Reshapes 1D (flat 10D) array to 2D array with V values
         as coloumns and all other states as rows
         """
 
-        UC_in_1 = np.copy(UC_in).reshape((len(DB), grid_size_W,\
+        UC_in = UC_in.reshape((len(DB), grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
                                              len(V),\
@@ -334,9 +330,9 @@ def gen_reshape_funcs(og):
                                              grid_size_M,\
                                              ))
         
-        UC_in_2         = np.transpose(UC_in_1, (0,1,2,3,5,6,7,8,9,4) )
+        UC_in         = np.transpose(UC_in, (0,1,2,3,5,6,7,8,9,4) )
 
-        UC_out          = np.copy(UC_in_2).reshape(int(len(DB)*grid_size_W*\
+        UC_in          = UC_in.reshape(int(len(DB)*grid_size_W*\
                                              grid_size_alpha*\
                                              grid_size_beta*\
                                              grid_size_A*\
@@ -346,10 +342,8 @@ def gen_reshape_funcs(og):
                                              grid_size_M),\
                                              len(V)
                                              )
+        return UC_in
 
-        return UC_out
-
-    @njit
     def reshape_X_bar(UC_in):
         """
         Reshapes 1D array (without V and Pi) indexed 
@@ -359,7 +353,7 @@ def gen_reshape_funcs(og):
         to time t-1  E, Alpha and Beta 
         """
 
-        UC_out1 = np.copy(UC_in).reshape((len(DB), grid_size_W,\
+        UC_in = UC_in.reshape((len(DB), grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
                                              grid_size_A,\
@@ -369,9 +363,9 @@ def gen_reshape_funcs(og):
                                              grid_size_M,\
                                              ))
 
-        UC_out2 = np.copy(UC_out1).transpose((1,2,3,0,4,5,6,7,8))
+        UC_in = UC_in.transpose((1,2,3,0,4,5,6,7,8))
 
-        UC_out3  = np.copy(UC_out2).reshape((int(grid_size_W*\
+        UC_in  = UC_in.reshape((int(grid_size_W*\
                                              grid_size_alpha*\
                                              grid_size_beta),\
                                              int(len(DB)*grid_size_A*\
@@ -380,9 +374,9 @@ def gen_reshape_funcs(og):
                                              grid_size_Q*grid_size_M)
                                              ))
 
-        U_condE  = dot_py(EBA_P2, UC_out3)
+        U_condE  = dot_py(EBA_P2, UC_in)
 
-        U_condE1 = np.copy(U_condE).reshape((grid_size_W,\
+        U_condE = U_condE.reshape((grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
                                              len(DB),grid_size_A,\
@@ -392,7 +386,7 @@ def gen_reshape_funcs(og):
                                              grid_size_M
                                              ))
 
-        U_out = U_condE1.transpose((3,0,1,2,4,5,6,7,8))
+        U_out = U_condE.transpose((3,0,1,2,4,5,6,7,8))
 
         return U_out
 
@@ -410,7 +404,7 @@ def gen_reshape_funcs(og):
                                      (0,1,2,3,4,6,7,8,9,5))
 
         UC_R         = np.copy(UC_R1).\
-                            reshape((int(len(X_all_hat_vals)\
+                            reshape((int(len(X_all_ind_vals)\
                             /grid_size_A), int(grid_size_A)))
         return UC_R
         
@@ -420,7 +414,7 @@ def gen_reshape_funcs(og):
                                     grid_size_alpha, grid_size_beta,\
                                     len(Pi), grid_size_DC, grid_size_HS,\
                                     grid_size_Q,grid_size_M))
-        A_prime_adj_reshape2     = np.copy(A_prime_adj_reshape1).\
+        A_prime_adj_reshape2     = A_prime_adj_reshape1.\
                                     transpose((0,1,2,3,4,5,7,8,6))
 
         A_prime_adj_reshape      = np.copy(A_prime_adj_reshape2).\
@@ -429,8 +423,6 @@ def gen_reshape_funcs(og):
 
         return A_prime_adj_reshape
 
-
-    @njit
     def reshape_adj_RHS(adj_pols):
 
             # Recall the adjustment policies are ordered as:
@@ -443,8 +435,8 @@ def gen_reshape_funcs(og):
             #              grid_size_A(8)))
             # transpose so we have 
             # DBxExAlphaxBetaxPixQxMxWealthxA_DC
-        pols            = adj_pols.transpose((0,1,2,3,4,6,7,8,5))
-        pols_reshaped   = np.copy(pols).reshape((int(1*grid_size_W\
+        adj_pols            = adj_pols.transpose((0,1,2,3,4,6,7,8,5))
+        adj_pols   = adj_pols.reshape((int(1*grid_size_W\
                                 *grid_size_alpha\
                                 *grid_size_beta*len(Pi)\
                                 *grid_size_Q*grid_size_M),\
@@ -455,37 +447,34 @@ def gen_reshape_funcs(og):
         # re-order so we have 
         # DB(0)xE(1)xAlpha(2)xBeta(3)xPi(4)xQ(6)xWealth(7)xA_DC(5)
         
-        return pols_reshaped 
+        return adj_pols 
 
-    @njit
     def reshape_rent_RHS(rent_pols):
 
-        rent_pols1 = rent_pols.transpose((0,1,2,3,4,6,7,5))
-        rent_pols2 = np.copy(rent_pols1).reshape((int(1*grid_size_W*grid_size_alpha*
+        rent_pols = rent_pols.transpose((0,1,2,3,4,6,7,5))
+        rent_pols = rent_pols.reshape((int(1*grid_size_W*grid_size_alpha*
                                      grid_size_beta*len(Pi)*\
                                      grid_size_Q),\
                                      grid_size_A, grid_size_DC ))
 
-        return rent_pols2
+        return rent_pols
 
 
-    @njit
     def reshape_nadj_RHS(nadj_pols1):
 
         # noadj funcs are ordered as
         # DB(0)xE(1)xAlpha(2)xBeta(3)xPi(4)xA(5)xA_DC(6)xH(7)xQ(8)xM(9)
         # transpose so we have 
         # DB(0)xE(1)xAlpha(2)xBeta(3)xPi(4)xH(7)xQ(8)xM(9)xA(5)xA_DC(6)
-        pols = nadj_pols1.transpose((0,1,2,3,4,7,8,9,5,6))
-        pols_reshaped= np.copy(pols).reshape((int(1*grid_size_W*grid_size_alpha*
+        nadj_pols1 = nadj_pols1.transpose((0,1,2,3,4,7,8,9,5,6))
+        nadj_pols1= nadj_pols1.reshape((int(1*grid_size_W*grid_size_alpha*
                                  grid_size_beta*len(Pi)*grid_size_H*\
                                  grid_size_Q*grid_size_M),\
                                  grid_size_A, grid_size_DC ))
     
-        return pols_reshaped
+        return nadj_pols1
 
-    @njit
-    def reshape_vfunc_points(points):
+    def reshape_vfunc_points(a_prime_norent_vals, adcprime, h_prime_norent_vals, m_prime):
 
         # points are in shape: 
         # |DB(0)xE(1)XA(2)xB(3)xPi(4)xV(5)xA(6)xDC(7)xH(8)xQ(9)xM(10)|x points(11)
@@ -493,8 +482,10 @@ def gen_reshape_funcs(og):
         # DB(0)xE(1)xA(2)xB(3)xPi(4)xQ(9)xV(5)xA(6)xDC(7)xH(8)xM(10)x points(11)
         # then reshape back to:
         # |DB(0)xE(1)xA(2)xB(3)xPi(4)xQ(9)|x|V(5)xA(6)xDC(7)xH(8)xM(10)|x points(11)
+        points = np.column_stack(
+            (a_prime_norent_vals, adcprime, h_prime_norent_vals, m_prime))
 
-        points1 = np.copy(points).reshape((1,grid_size_W,\
+        points = points.reshape((1,grid_size_W,\
                                     grid_size_alpha,\
                                     grid_size_beta,\
                                     len(Pi),\
@@ -505,22 +496,18 @@ def gen_reshape_funcs(og):
                                     grid_size_Q,\
                                     grid_size_M,4))
 
-        points2 = np.copy(points1).transpose((0,1,2,3,4,9,5,6,7,8,10,11))
-        points3 = np.copy(points2).reshape((int(1*grid_size_W*grid_size_alpha*grid_size_beta*len(Pi)*grid_size_Q),\
+        points = points.transpose((0,1,2,3,4,9,5,6,7,8,10,11))
+        points = points.reshape((int(1*grid_size_W*grid_size_alpha*grid_size_beta*len(Pi)*grid_size_Q),\
                                         int(len(V)*grid_size_A*grid_size_DC*grid_size_H*grid_size_M),4))
 
 
-        return points3
+        return points
 
-
-    @njit 
     def reshape_RHS_UFB(UF_FUNC):
 
-        UF_FUNC_reshaped1 = np.copy(UF_FUNC)\
-                                .reshape(all_state_shape_hat)
-        UF_FUNC_reshaped2 = np.copy(UF_FUNC_reshaped1\
-                                .transpose((0,1,2,3,5,9,4,6,7,8,10)))
-        UF_FUNC_reshaped3 = UF_FUNC_reshaped2.reshape((int(len(DB)*grid_size_W\
+        UF_FUNC = UF_FUNC.reshape(all_state_shape_hat)
+        UF_FUNC = UF_FUNC.transpose((0,1,2,3,5,9,4,6,7,8,10))
+        UF_FUNC = UF_FUNC.reshape((int(len(DB)*grid_size_W\
                                                         *grid_size_alpha\
                                                         *grid_size_beta\
                                                         *len(Pi)*grid_size_Q),\
@@ -530,16 +517,14 @@ def gen_reshape_funcs(og):
                                                             grid_size_H*\
                                                             grid_size_M)))
 
-        return UF_FUNC_reshaped3
+        return UF_FUNC
 
-
-    @njit 
     def reshape_RHS_Vfunc_rev(Xifunc):
         """ Reshapes  policies interpolated
         from the t+1 value function back to the order
         of X_all_ind"""
 
-        Xifunc_reshaped1  = np.copy(Xifunc).reshape((len(DB),\
+        Xifunc  = Xifunc.reshape((len(DB),\
                                                 grid_size_W,\
                                                 grid_size_alpha,\
                                                 grid_size_beta,\
@@ -551,11 +536,10 @@ def gen_reshape_funcs(og):
                                                 grid_size_M))
 
         # change order so Pi, V are consecutive and Q, M are consec
-        Xifunc_reshaped2 = np.copy(Xifunc_reshaped1\
-                                .transpose((0,1,2,3,4,6,7,8,9,5,10)))
+        Xifunc = Xifunc.transpose((0,1,2,3,4,6,7,8,9,5,10))
 
         # unravel array 
-        Xifunc_reshaped3 = Xifunc_reshaped2.reshape(int(len(DB)\
+        Xifunc = Xifunc.reshape(int(len(DB)\
                                                 *grid_size_W\
                                                 *grid_size_alpha\
                                                 *grid_size_beta\
@@ -565,7 +549,7 @@ def gen_reshape_funcs(og):
                                                 len(V)*\
                                                 grid_size_H*\
                                                 grid_size_M))
-        return Xifunc_reshaped3
+        return Xifunc
 
 
 

@@ -73,8 +73,7 @@ def retiree_func_factory(og):
                                          og.parameters.H_min, og.parameters.A_max_R
     H_max                           = og.parameters.H_max
 
-    X_all_hat_ind                   = og.big_grids.X_all_hat_ind
-    X_all_hat_vals                  = og.big_grids.X_all_hat_vals
+    X_all_hat_ind                   = og.BigAssGrids.X_all_hat_ind_f()
 
     X_cont_R,X_R_contgp,\
     X_H_R_ind,\
@@ -94,6 +93,8 @@ def retiree_func_factory(og):
     grid_size_HS                     = og.parameters.grid_size_HS
 
     T, tzero, R                     = og.parameters.T, og.parameters.tzero, og.parameters.R
+
+    acc_ind = og.acc_ind[0]
 
     @njit
     def interp_as(xp,yp,x):
@@ -1595,13 +1596,14 @@ def retiree_func_factory(og):
 
             """
             for i in prange(len(points)):
-                q_in                = X_all_hat_vals[i][8]
-                H_in                = X_all_hat_vals[i][7]
+                q_in                = Q[X_all_hat_ind[i][8]]
+                H_in                = H[X_all_hat_ind[i][7]]
                 q_ind               = X_all_hat_ind[i][8]
                 E_ind               = X_all_hat_ind[i][1]
-                ADC_in              = X_all_hat_vals[i][6]
-                r_share             = X_all_hat_vals[i][4]
-                m_in                = X_all_hat_vals[i][9]
+                ADC_in              = A_DC[X_all_hat_ind[i][6]]
+                r_share             = Pi[X_all_hat_ind[i][4]]
+                m_in                = M[X_all_hat_ind[i][9]]
+
 
                 # generate values for relisations of T_R period
                 # house price shocks, DC values after returns
@@ -1623,8 +1625,8 @@ def retiree_func_factory(og):
                 for j in prange(len(E)):
                     
                     a_l_exDC                = DB_payout[j]\
-                                                *(1-X_all_hat_vals[i][0])\
-                                                + (1+r)*X_all_hat_vals[i][5]
+                                                *(1-acc_ind)\
+                                                + (1+r)*A[X_all_hat_ind[i][5]]
 
                     a_l                     = A_DC_prime+ a_l_exDC \
                                                 - M_prime*amort_rate(R-2)
@@ -1798,7 +1800,7 @@ def retiree_func_factory(og):
 
 
         UC_prime_out,UC_prime_H_out, UC_prime_HFC_out,UC_prime_M_out,\
-        Lambda_out, VF              = gen_RHS_TR_point(np.arange(len(X_all_hat_vals)),\
+        Lambda_out, VF              = gen_RHS_TR_point(np.arange(len(X_all_hat_ind)),\
                                                 UC_prime_out,\
                                                 UC_prime_H_out,\
                                                 UC_prime_HFC_out,\

@@ -128,7 +128,7 @@ baseline_lite:
     grid_size_DC: 6.0
     grid_size_DCR: 2.0
     grid_size_H: 15
-    grid_size_HS: 50
+    grid_size_HS: 15
     grid_size_M: 15.0
     grid_size_Q: 6.0
     grid_size_Q_s: 2.0

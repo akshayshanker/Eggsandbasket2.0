@@ -34,7 +34,7 @@ from numpy.core.umath_tests import inner1d
 import time
 
 
-def generate_points(og):
+def generate_points(og, scratch = True):
 
     amort_rate          = og.functions.amort_rate
 
@@ -65,9 +65,9 @@ def generate_points(og):
 
     EBA_P               = og.cart_grids.EBA_P
 
-    X_all_hat_vals,X_all_ind = og.big_grids.X_all_hat_vals, og.big_grids.X_all_ind
+    X_all_ind           = og.BigAssGrids.X_all_ind_f()
     Q_DC_shocks         = og.cart_grids.Q_DC_shocks
-    X_all_hat_ind       = og.big_grids.X_all_hat_ind
+    X_all_hat_ind       = og.BigAssGrids.X_all_hat_ind_f()
 
 
     #grid sizes
@@ -115,9 +115,9 @@ def generate_points(og):
 
         """ 
 
-        EBA_P_mat   = np.empty((len(X_all_hat_vals), len(EBA_P[0, 0, 0,:])))
+        EBA_P_mat   = np.empty((len(X_all_hat_ind), len(EBA_P[0, 0, 0,:])))
 
-        for i in prange(len(X_all_hat_vals)):
+        for i in prange(len(X_all_hat_ind)):
             probs = gen_prob_EBA(i)
 
             EBA_P_mat[i,:] = probs
@@ -149,11 +149,11 @@ def generate_points(og):
         8 - Q at T_R (previous period)
         9 - M before returns taken into period 
         """
-        r_share         = X_all_hat_vals[i][4]
-        ADC_in          = X_all_hat_vals[i][6]
-        H_in            = X_all_hat_vals[i][7]
-        q_in            = X_all_hat_vals[i][8]
-        m_in            = X_all_hat_vals[i][9]
+        r_share         = Pi[X_all_hat_ind[i][4]]
+        ADC_in          = A_DC[X_all_hat_ind[i][6]]
+        H_in            = H[X_all_hat_ind[i][7]]
+        q_in            = Q[X_all_hat_ind[i][8]]
+        m_in            = M[X_all_hat_ind[i][9]]
 
         DB_ind              = 0
         E_ind               = X_all_hat_ind[i][1]
@@ -183,10 +183,10 @@ def generate_points(og):
     @njit
     def gen_x_prime_array():
 
-        X_prime_vals            = np.empty((len(X_all_hat_vals),\
+        X_prime_vals            = np.empty((len(X_all_hat_ind),\
                                     len(Q_DC_shocks[:,2]), 4))
 
-        for i in prange(len(X_all_hat_vals)):
+        for i in prange(len(X_all_hat_ind)):
             X_prime_vals[i,:]       = gen_x_prime_vals(i)
 
         return X_prime_vals
@@ -432,4 +432,22 @@ def generate_points(og):
 
     points_noadj_vec, points_adj_vec, points_rent_vec, A_prime = gen_RHS_points()
 
-    return  X_all_ind_W_vals, X_prime_vals, points_noadj_vec, points_adj_vec, points_rent_vec, A_prime
+
+    if scratch ==True:
+
+        for Age in np.arange(int(tzero), int(R))[::-1]:
+            np.savez_compressed("/scratch/pv33/ls_model_temp/grigrid_modname_{}_age_{}".format(og.mod_name, Age),\
+                                    points_noadj_vec  = points_noadj_vec[int(Age-tzero)],\
+                                    points_adj_vec = points_adj_vec[int(Age-tzero)],\
+                                    points_rent_vec = points_rent_vec[int(Age-tzero)],\
+                                    A_prime = A_prime[int(Age-tzero)])
+
+
+            np.savez_compressed("/scratch/pv33/ls_model_temp/grigrid_modname_{}_genfiles".format(og.mod_name, Age),\
+                        X_all_ind_W_vals  = X_all_ind_W_vals,\
+                        X_prime_vals = X_prime_vals)
+
+        return 0
+
+    else:
+        return  X_all_ind_W_vals, X_prime_vals, points_noadj_vec, points_adj_vec, points_rent_vec, A_prime
