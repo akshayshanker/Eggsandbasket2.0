@@ -20,6 +20,9 @@ policy          = solve_LC_model()
 
 # Import packages
 
+from pympler import tracker 
+tr = tracker.SummaryTracker()
+
 import dill as pickle
 from interpolation import interp
 from interpolation.splines import extrap_options as xto
@@ -30,16 +33,18 @@ import time
 import numpy as np
 import gc
 import warnings
-from psutil import virtual_memory 
 warnings.filterwarnings('ignore')
-
 import sys
+from psutil import virtual_memory 
+
+
 sys.path.append("..")
 from eggsandbaskets.util.helper_funcs import gen_policyout_arrays, d0, interp_as,\
     gen_reshape_funcs, einsum_row
 
 
 def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
+
     """ Generates solver of worker policies
 
     Parameters
@@ -164,13 +169,15 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
 
     # larger grids
     if comm.rank == 0:
-        X_all_ind = og.BigAssGrids.X_all_ind_f()
-        X_all_hat_ind = og.BigAssGrids.X_all_hat_ind_f()
-        X_all_B_ind = og.BigAssGrids.X_all_B_ind_f()
+        X_all_ind = og.BigAssGrids.X_all_ind_f().astype(np.int32)
+        X_all_hat_ind = og.BigAssGrids.X_all_hat_ind_f().astype(np.int32)
+        X_all_B_ind = og.BigAssGrids.X_all_B_ind_f().astype(np.int32)
         X_all_B_vals = og.BigAssGrids.X_all_B_vals_f()
         x_all_ind_len_a = np.array([len(X_all_ind)])
         x_all_ind_len = x_all_ind_len_a[0]
         comm.Send(x_all_ind_len_a, dest =1, tag = 111)
+        X_V_func_DP_vals = og.BigAssGrids.X_V_func_DP_vals_f()
+        X_V_func_CR_vals = og.BigAssGrids.X_V_func_CR_vals_f()
 
     if comm.rank ==1:
         x_all_ind_len_a  = np.array([0])
@@ -179,11 +186,8 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
         comm.Recv(x_all_ind_len_a, source =0, tag = 111)
         x_all_ind_len = x_all_ind_len_a[0]
     
-    X_all_C_ind = og.BigAssGrids.X_all_C_ind_f()
-    X_all_C_vals = og.BigAssGrids.X_all_C_vals_f()
-    X_V_func_DP_vals = og.BigAssGrids.X_V_func_DP_vals_f()
-    X_V_func_CR_vals = og.BigAssGrids.X_V_func_CR_vals_f()
-    
+    X_all_C_ind = og.BigAssGrids.X_all_C_ind_f().astype(np.int32)
+    X_all_C_vals = og.BigAssGrids.X_all_C_vals_f().astype(np.float32)
 
     # Preset shapes
     all_state_shape, all_state_shape_hat, v_func_shape,\
@@ -541,7 +545,7 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
                 * mort_FOC(M[-1], UC_prime_func1D, UC_prime_M_func1D) < 0:
             return brentq(mort_FOC, 0, M[-1],
                           args=(UC_prime_func1D,
-                                UC_prime_M_func1D), xtol = 1e-06)[0]
+                                UC_prime_M_func1D))[0]
         elif UC_prime_m_max >= UC_prime_M_m_max:
             return M[-1]
         else:
@@ -809,7 +813,7 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
             h_clean = H_R[~np.isnan(wealth_bar_reshape[i])]
             h_x = np.take(h_clean, np.argsort(wealth_x))
 
-            #print(h_x)
+            print(h_x)
             c_clean = C_adj[i][~np.isnan(wealth_bar_reshape[i])]
             c_x = np.take(c_clean, np.argsort(wealth_x))
 
@@ -1184,7 +1188,7 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
 
 
 
-        return noadj_vals,C_noadj, etas_noadj, Aprime_noadj
+        return noadj_vals,C_noadj.astype(np.float32), etas_noadj.astype(np.float32), Aprime_noadj.astype(np.float32)
 
     def gen_RHS_adjpoints(t,
                              mort_func,
@@ -1215,7 +1219,7 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
                                     grid_size_H, 5))\
                                     .transpose((0, 1, 2, 3, 7, 4, 8, 9, 10, 5, 6, 11))\
                                     .reshape((x_all_ind_len, 5))
-        return adj_vals,C_adj, H_adj, Aprime_adj
+        return adj_vals,C_adj.astype(np.float32), H_adj.astype(np.float32), Aprime_adj.astype(np.float32)
 
     def gen_RHS_rentponts(UC_prime, points_rent):
 
@@ -1667,12 +1671,13 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
 
         rent_points_p = reshape_vfunc_points(a_prime_rent, adcprime, np.full(len(X_all_ind), H_min),np.full(len(X_all_ind), 0))
 
-        return h_prime_norent_vals.astype(np.float32),\
-            ucfunc_norent, ufunc_norent.astype(np.float32),\
-            extra_pay>0, etas_ind,\
-            cannot_rent,\
-            ucfunc_rent.astype(np.float32),\
-            ufunc_rent.astype(np.float32), no_rent_points_p, rent_points_p
+        return h_prime_norent_vals,\
+            ucfunc_norent, ufunc_norent,\
+            (extra_pay>0).astype(np.int32),\
+            etas_ind.astype(np.float32),\
+            cannot_rent.astype(np.float32),\
+            ucfunc_rent,\
+            ufunc_rent, no_rent_points_p, rent_points_p
 
     @njit
     def gen_RHS_lambdas(t, VF,\
@@ -1757,10 +1762,10 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
                          adj_p(17)) * (pi != def_pi)
 
         # Rehsape all to X_all_ind.shape() and return
-        return Xi.astype(np.float32), Lambda_B.astype(np.float32),\
-                VF_B.astype(np.float32) 
+        return Xi, Lambda_B,\
+                VF_B 
 
-    def gen_RHS_UC_func(comm, t,
+    def gen_RHS_UC_func(t,
                         VF,\
                         Lambda,\
                         A_prime,\
@@ -1804,22 +1809,18 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
         Xi:                flat 9D array
 
         """
-        if comm.rank == 0:
-            h_prime_norent_vals,\
-            uc_prime_norent, \
-            u_prime_norent,\
-            extra_pay,\
-            etas_ind,\
-            cannot_rent,\
-            uc_prime_rent,\
-            u_prime_rent,\
-            no_rent_points_p,\
-            rent_points_p = gen_RHS_pol_val(t,noadj_vals,
-                                                adj_vals,
-                                                rent_vals)
-
-            comm.Send(no_rent_points_p, dest = 1, tag = 222)
-            comm.Send(u_prime_norent,dest = 1, tag = 221 )
+        h_prime_norent_vals,\
+        uc_prime_norent, \
+        u_prime_norent,\
+        extra_pay,\
+        etas_ind,\
+        cannot_rent,\
+        uc_prime_rent,\
+        u_prime_rent,\
+        no_rent_points_p,\
+        rent_points_p = gen_RHS_pol_val(t,noadj_vals,
+                                            adj_vals,
+                                            rent_vals)
 
         # Generate the time t policies interpolated
         # on X_all_ind grid
@@ -1867,100 +1868,78 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
         # Loop over all points of the states in  X_all_ind
         # interpolate values of value function and
         # Lambda function back to period t
-        if comm.rank == 0:
-            Xi_rent, Lambda_B_rent, VF_B_rent = gen_RHS_lambdas(t, VF, Lambda,
-                                                    reshape_RHS_UFB(u_prime_rent),
-                                                    rent_points_p)
-            Xi_rent = reshape_RHS_Vfunc_rev(Xi_rent)
-            Lambda_B_rent = reshape_RHS_Vfunc_rev(Lambda_B_rent)
-            VF_B_rent = reshape_RHS_Vfunc_rev(VF_B_rent)
+        Xi_rent, Lambda_B_rent, VF_B_rent = gen_RHS_lambdas(t, VF, Lambda,
+                                                reshape_RHS_UFB(u_prime_rent),
+                                                rent_points_p)
+        Xi_rent = reshape_RHS_Vfunc_rev(Xi_rent)
+        Lambda_B_rent = reshape_RHS_Vfunc_rev(Lambda_B_rent)
+        VF_B_rent = reshape_RHS_Vfunc_rev(VF_B_rent)
 
-        if comm.rank == 1:
-            no_rent_points_p = np.empty((int(1*grid_size_W*grid_size_alpha*grid_size_beta*len(Pi)*grid_size_Q),\
-                                        int(len(V)*grid_size_A*grid_size_DC*grid_size_H*grid_size_M),4))
+        Xi_norent, Lambda_B_norent, VF_B_norent = gen_RHS_lambdas(t, VF, Lambda,
+                                    reshape_RHS_UFB(u_prime_norent),
+                                    no_rent_points_p)
+        Xi_norent = reshape_RHS_Vfunc_rev(Xi_norent)
+        Lambda_B_norent = reshape_RHS_Vfunc_rev(Lambda_B_norent)
+        VF_B_norent  = reshape_RHS_Vfunc_rev(VF_B_norent)
 
-            u_prime_norent = np.empty((int(1*grid_size_W*grid_size_alpha*grid_size_beta*len(Pi)*grid_size_Q*len(V)*grid_size_A*grid_size_DC*grid_size_H*grid_size_M),1))
-
-            comm.Recv(no_rent_points_p, source = 0, tag = 222)
-            comm.Recv(u_prime_norent,source = 0, tag = 221 )
-            Xi_norent, Lambda_B_norent, VF_B_norent = gen_RHS_lambdas(t, VF, Lambda,
-                                        reshape_RHS_UFB(u_prime_norent),
-                                        no_rent_points_p)
-            Xi_norent = reshape_RHS_Vfunc_rev(Xi_norent)
-            Lambda_B_norent = reshape_RHS_Vfunc_rev(Lambda_B_norent)
-            VF_B_norent  = reshape_RHS_Vfunc_rev(VF_B_norent)
-            comm.Send(Xi_norent, dest = 0, tag = 999)
-            comm.Send(Lambda_B_norent, dest = 0, tag = 997)
-            comm.Send(VF_B_norent, dest = 0, tag = 996)
-
-        if comm.rank == 0:
-            Xi_norent = np.empty(np.shape(Xi_rent))
-            Lambda_B_norent = np.empty(np.shape(Lambda_B_rent))
-            VF_B_norent = np.empty(np.shape(VF_B_rent))
-
-            comm.Recv(Xi_norent, source = 1, tag = 999)
-            comm.Recv(Lambda_B_norent, source = 1, tag = 997)
-            comm.Recv(VF_B_norent, source = 1, tag = 996)
-
-            UF_B_norent = u_prime_norent
-            UF_B_rent = u_prime_rent
-            
-            zeta = VF_B_rent - VF_B_norent
+        UF_B_norent = u_prime_norent
+        UF_B_rent = u_prime_rent
+        
+        zeta = VF_B_rent - VF_B_norent
             #zeta = reshape_RHS_Vfunc_rev(zeta)
 
 
-            # zeta is multiplier that indicates renter if zeta>1
-            # cannot rent is an indictator that someone is not able
-            # to pay off thier mortgage liability after renting decision
-            # hence will not rent 
-            # renter_ind = zeta>0 AND cannot_rent == 0 
-            zeta[np.isnan(zeta)] = 0
-            renter_ind = zeta > 0
-            renter_ind = renter_ind*(1-cannot_rent)
-            renter_ind[np.isnan(renter_ind)] =0
+        # zeta is multiplier that indicates renter if zeta>1
+        # cannot rent is an indictator that someone is not able
+        # to pay off thier mortgage liability after renting decision
+        # hence will not rent 
+        # renter_ind = zeta>0 AND cannot_rent == 0 
+        zeta[np.isnan(zeta)] = 0
+        renter_ind = zeta > 0
+        renter_ind = renter_ind*(1-cannot_rent)
+        renter_ind[np.isnan(renter_ind)] =0
 
-            # Recall that all renters are not bounded by min payment
-            # hence thier FOC is the extra_pay FOC
-            extra_pay = extra_pay * (1 - renter_ind)\
-                + renter_ind
-            
-            uc_prime = uc_prime_norent
-            uc_prime[renter_ind==1] = uc_prime_rent[renter_ind==1]
+        # Recall that all renters are not bounded by min payment
+        # hence thier FOC is the extra_pay FOC
+        extra_pay = extra_pay * (1 - renter_ind)\
+            + renter_ind
+        
+        uc_prime = uc_prime_norent
+        uc_prime[renter_ind==1] = uc_prime_rent[renter_ind==1]
 
-            # RHS values of Euler equation
-            # First, with respect to A_t
-            UC_prime_B = (1 + r) * (s[int(t - 1)] * uc_prime + (1 - s[int(t - 1)])
-                                    * b_prime(A_prime))
-            # wrt to H_t-1
-            UC_prime_H_B = Q[X_all_ind[:, 9]]\
-                * (1 - delta_housing - tau_housing * renter_ind)\
-                * (s[int(t - 1)] * uc_prime
-                   + (1 - s[int(t - 1)]) * b_prime(A_prime))
+        # RHS values of Euler equation
+        # First, with respect to A_t
+        UC_prime_B = (1 + r) * (s[int(t - 1)] * uc_prime + (1 - s[int(t - 1)])
+                                * b_prime(A_prime))
+        # wrt to H_t-1
+        UC_prime_H_B = Q[X_all_ind[:, 9]]\
+            * (1 - delta_housing - tau_housing * renter_ind)\
+            * (s[int(t - 1)] * uc_prime
+               + (1 - s[int(t - 1)]) * b_prime(A_prime))
 
-            # the fixed cost paif if H_t-1 is adjusted
-            UC_prime_HFC_B = Q[X_all_ind[:, 9]] * (1 - delta_housing) * s[int(t - 1)] * uc_prime\
-                * tau_housing * h_prime_norent_vals\
-                * etas_ind * (1 - renter_ind)
-            # wrt to mortgage m_t
-            UC_prime_M_B = s[int(t - 1)] * uc_prime * extra_pay\
-                + (1 - s[int(t - 1)]) * b_prime(A_prime)
+        # the fixed cost paif if H_t-1 is adjusted
+        UC_prime_HFC_B = Q[X_all_ind[:, 9]] * (1 - delta_housing) * s[int(t - 1)] * uc_prime\
+            * tau_housing * h_prime_norent_vals\
+            * etas_ind * (1 - renter_ind)
+        # wrt to mortgage m_t
+        UC_prime_M_B = s[int(t - 1)] * uc_prime * extra_pay\
+            + (1 - s[int(t - 1)]) * b_prime(A_prime)
 
-            # Return RHS value function, period utility
-            # function and Lambda function values state by state
-            # Xi function is the period utility + Lambda - adjustment cost
-            Lambda_B = renter_ind * Lambda_B_rent \
-                + (1 - renter_ind) * Lambda_B_norent
-            VF_B = renter_ind * VF_B_rent\
-                + (1 - renter_ind) * VF_B_norent
-            Xi = renter_ind * Xi_rent\
-                + (1 - renter_ind) * Xi_norent
-            UF_B = renter_ind * UF_B_rent\
-                + (1 - renter_ind) * UF_B_norent
+        # Return RHS value function, period utility
+        # function and Lambda function values state by state
+        # Xi function is the period utility + Lambda - adjustment cost
+        Lambda_B = renter_ind * Lambda_B_rent \
+            + (1 - renter_ind) * Lambda_B_norent
+        VF_B = renter_ind * VF_B_rent\
+            + (1 - renter_ind) * VF_B_norent
+        Xi = renter_ind * Xi_rent\
+            + (1 - renter_ind) * Xi_norent
+        UF_B = renter_ind * UF_B_rent\
+            + (1 - renter_ind) * UF_B_norent
 
-            return UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
-                    Lambda_B, VF_B, Xi, UF_B, zeta
-        if comm.rank ==1:
-            return 0
+        return UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
+                Lambda_B, VF_B, Xi, UF_B, zeta
+
 
     # @njit
     def UC_cond_DC(UC_prime_B,
@@ -2013,7 +1992,6 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
         VF_B_cpi = einsum_row(prob_pi, VF_B_copi)
         UF_B_cpi = einsum_row(prob_pi, UF_B_copi)
         Xi_cpi = einsum_row(prob_pi, Xi_copi)
-
         # Reshape to condition out V
         UC_prime_cov, UC_prime_H_cov, UC_prime_HFC_cov,\
             UC_prime_M_cov, Lambda_B_cov, VF_B_cov, UF_B_cov, Xi_cov,\
@@ -2198,8 +2176,16 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
 
         return UC_prime, UC_prime_H, UC_prime_HFC, UC_prime_M, Lambda, VF, UF
 
-    # Define function to solve worker policies via backward iteration
-    def solve_LC_model(comm, load_ret, ret_path):
+    
+    def solve_LC_model(comm,\
+                        load_ret,\
+                        ret_path,\
+                        scr_pol_path = '/scratch/pv33/ls_model_temp',\
+                        interp_pts_path = '/scratch/pv33/ls_model_temp'):
+        """  Function to solve worker policies via backward iteration
+        """
+
+
 
         if load_ret == 1:
             # Load retiree policies
@@ -2219,8 +2205,8 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
         start1 = time.time()
         for Age in np.arange(int(tzero), int(R))[::-1]:
             # Load RHS interpolation  points for age from scratch drive 
-            with np.load("/scratch/pv33/ls_model_temp/grigrid_modname_{}_age_{}.npz"\
-                                .format(og.mod_name, Age)) as data:
+            with np.load("{}/grigrid_modname_{}_age_{}.npz"\
+                                .format(interp_pts_path,og.mod_name, Age)) as data:
                 if comm.rank ==0:
                     points_noadj_vec = data['points_noadj_vec']
                     points_rent_vec = data['points_rent_vec']
@@ -2231,7 +2217,6 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
             start = time.time()
             t = Age
             
-
             # Step 1: Evaluate optimal mortgage choice func
             mort_func = eval_pol_mort_W(t, UC_prime, UC_prime_M)
 
@@ -2290,17 +2275,14 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
             # Step 4: Evaulate unconditioned RHS of Euler equations rank 0
                          
             start = time.time()
-            B_funcs = gen_RHS_UC_func(comm, t,
+            if comm.rank == 0:
+                UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
+                Lambda_B, VF_B, Xi, UF_B, zeta =  gen_RHS_UC_func(t,
                                   VF, Lambda,
                                   A_prime, 
                                   noadj_vals,
                                   adj_vals,
                                   rent_vals)
-            mem = virtual_memory()
-            print(mem.available/mem.total)
-            if comm.rank == 0:
-                (UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
-                Lambda_B, VF_B, Xi, UF_B, zeta) = B_funcs 
 
 
                 print("Solved gen_RHS_UC_func of age {} in {} seconds".
@@ -2348,35 +2330,35 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
                                         grid_size_H,
                                         grid_size_Q,
                                         grid_size_M))
-                    np.savez_compressed("/scratch/pv33/ls_model_temp/age_{}_acc_{}_id_{}_pols".\
-                                            format(t,og.acc_ind[0], og.ID),\
-                         C_adj = C_adj.astype(np.float32),\
-                         H_adj = H_adj.astype(np.float32),\
-                         Aprime_adj = Aprime_adj.astype(np.float32),\
-                         C_noadj =C_noadj.astype(np.float32),\
-                         etas_noadj = etas_noadj.astype(np.float32),\
-                         Aprime_noadj = Aprime_noadj.astype(np.float32),\
-                         zeta = zeta.astype(np.float32),\
-                         H_rent = H_rent.astype(np.float32),\
-                         Xi_cov = Xi_cov.astype(np.float32),\
-                         Xi_copi =Xi_copi.astype(np.float32),\
-                         policy_VF = VF.astype(np.float32))
+                    np.savez_compressed("{}/age_{}_acc_{}_id_{}_pols".\
+                                            format(scr_pol_path,t,og.acc_ind[0], og.ID),\
+                         C_adj = C_adj,\
+                         H_adj = H_adj,\
+                         Aprime_adj = Aprime_adj,\
+                         C_noadj =C_noadj,\
+                         etas_noadj = etas_noadj,\
+                         Aprime_noadj = Aprime_noadj,\
+                         zeta = zeta,\
+                         H_rent = H_rent,\
+                         Xi_cov = Xi_cov,\
+                         Xi_copi =Xi_copi,\
+                         policy_VF = VF)
                     print("Saved policies in {} seconds"\
                                     .format(-time.time()+ time.time()))
 
                 else:
-                    np.savez_compressed("/scratch/pv33/ls_model_temp/age_{}_acc_{}_id_{}_pols".\
-                            format(t,og.acc_ind[0],og.ID),\
-                         C_adj = C_adj.astype(np.float32),\
-                         H_adj = H_adj.astype(np.float32),\
-                         Aprime_adj = Aprime_adj.astype(np.float32),\
-                         C_noadj =C_noadj.astype(np.float32),\
-                         etas_noadj = etas_noadj.astype(np.float32),\
-                         Aprime_noadj = Aprime_noadj.astype(np.float32),\
-                         zeta = zeta.astype(np.float32),\
-                         H_rent = H_rent.astype(np.float32),\
-                         Xi_cov = Xi_cov.astype(np.float32),\
-                         Xi_copi =Xi_copi.astype(np.float32))
+                    np.savez_compressed("{}/age_{}_acc_{}_id_{}_pols".\
+                            format(scr_pol_path,t,og.acc_ind[0],og.ID),\
+                         C_adj = C_adj,\
+                         H_adj = H_adj,\
+                         Aprime_adj = Aprime_adj,\
+                         C_noadj =C_noadj,\
+                         etas_noadj = etas_noadj,\
+                         Aprime_noadj = Aprime_noadj,\
+                         zeta = zeta,\
+                         H_rent = H_rent,\
+                         Xi_cov = Xi_cov,\
+                         Xi_copi =Xi_copi)
                     print("Saved policies in {} seconds"\
                         .format(-time.time()+ time.time()))
                 
@@ -2384,22 +2366,16 @@ def worker_solver_factory(og, comm, gen_R_pol, gen_newpoints = False):
                 comm.Send(UC_prime_H, dest= 1, tag = 20)
                 comm.Send(UC_prime_HFC, dest= 1, tag = 21)
                 comm.Send(UC_prime_M, dest= 1, tag = 22)
-                comm.Send(Lambda, dest= 1, tag = 23)
-                comm.Send(VF, dest= 1, tag = 224)
 
             if comm.rank ==1:
                 comm.Recv(UC_prime, source= 0, tag = 19)
                 comm.Recv(UC_prime_H, source= 0, tag = 20)
                 comm.Recv(UC_prime_HFC, source= 0, tag = 21)
                 comm.Recv(UC_prime_M, source= 0, tag = 22)
-                comm.Recv(Lambda, source= 0, tag = 23)
-                comm.Recv(VF, source= 0, tag = 224)
 
-            
             mem = virtual_memory()
             print(mem.available/mem.total)
-            gc.collect()
-            print(mem.available/mem.total)
+            tr.print_diff()
         print("Solved lifecycle model in {} seconds".format(time.time() - start1))
         return og.ID 
     return solve_LC_model
