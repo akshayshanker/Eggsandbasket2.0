@@ -34,7 +34,7 @@ from numpy.core.umath_tests import inner1d
 import time
 
 
-def generate_points(og, scratch = True):
+def generate_points(og, path, scratch = True):
 
     amort_rate          = og.functions.amort_rate
 
@@ -436,14 +436,14 @@ def generate_points(og, scratch = True):
     if scratch ==True:
 
         for Age in np.arange(int(tzero), int(R))[::-1]:
-            np.savez_compressed("/scratch/pv33/ls_model_temp/grigrid_modname_{}_age_{}".format(og.mod_name, Age),\
+            np.savez_compressed(path+"/grigrid_modname_{}_age_{}".format(og.mod_name, Age),\
                                     points_noadj_vec  = points_noadj_vec[int(Age-tzero)],\
                                     points_adj_vec = points_adj_vec[int(Age-tzero)],\
                                     points_rent_vec = points_rent_vec[int(Age-tzero)],\
                                     A_prime = A_prime[int(Age-tzero)])
 
 
-            np.savez_compressed("/scratch/pv33/ls_model_temp/grigrid_modname_{}_genfiles".format(og.mod_name, Age),\
+            np.savez_compressed(path+"/grigrid_modname_{}_genfiles".format(og.mod_name, Age),\
                         X_all_ind_W_vals  = X_all_ind_W_vals,\
                         X_prime_vals = X_prime_vals)
 

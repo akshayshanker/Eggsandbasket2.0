@@ -269,7 +269,7 @@ def gen_reshape_funcs(og):
                                                     int(og.parameters.grid_size_alpha),\
                                                     int(og.parameters.grid_size_beta)
     
-    DB, V, Pi, X_W_bar_hdjex_ind                 = og.grid1d.DB, og.grid1d.V, og.grid1d.Pi, og.BigAssGrids.X_W_bar_hdjex_ind_f()
+    DB, V, Pi, X_W_bar_hdjex_ind                 = og.grid1d.DB, og.grid1d.V, og.grid1d.Pi, og.BigAssGrids.X_W_bar_hdjex_ind_f().astype(np.int32)
 
     EBA_P2                                       = og.cart_grids.EBA_P2
 

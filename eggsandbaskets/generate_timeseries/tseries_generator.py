@@ -18,51 +18,40 @@ from itertools import product
 from interpolation.splines import UCGrid, CGrid, nodes, eval_linear
 import pandas as pd
 import copy
+import time
 import dill as pickle 
 from numba import njit
 from itertools import permutations
 from interpolation.splines import extrap_options as xto
 import gc
-
 from eggsandbaskets.util.helper_funcs import *
+import glob 
+import copy
+import os
 
 def genprofiles_operator(og,
                 norm = 1E5):
 
-    """For a solved housing model, returns a time-series of profiles 
+    """For a LifeCycle model, returns an operator to
+        generate time-series 
 
     Parameters
     ----------
     og: class
         Housing nmodel  
 
-    N: int
-        Number of agents to simulate 
-
+    norm: float
+         
     Returns
     -------
-    TSALL
-        Dictionary containing time-series
+    generate_TSDF: dataframe
     """
     
     # unpack and define functions to be used in time-series generator 
-    # declare functions
-
-    # Unpack  variables from class
-    # functions
-    u = og.functions.u
-    uc = og.functions.uc
-    uh = og.functions.uh
-    uc_inv = og.functions.uc_inv
-    uh_inv = og.functions.uh_inv
-
-    u_vec, uc_vec = og.functions.u_vec, og.functions.uc_vec
-    amort_rate = og.functions.amort_rate
-    b, b_prime = og.functions.b, og.functions.b_prime
-    y, yvec = og.functions.y, og.functions.yvec
+    y = og.functions.y
     adj_p, adj_v, adj_pi = og.functions.adj_p, og.functions.adj_v,\
         og.functions.adj_pi
-
+    amort_rate = og.functions.amort_rate
     # Parameters
     s = og.parameters.s
     delta_housing = og.parameters.delta_housing
@@ -99,17 +88,6 @@ def genprofiles_operator(og,
     sigma_DC_pi = og.parameters.sigma_DC_pi
     sigma_DB_pi = og.parameters.sigma_DB_pi
 
-    grid_size_A = og.parameters.grid_size_A
-    grid_size_DC = og.parameters.grid_size_DC
-    grid_size_H = og.parameters.grid_size_H
-    grid_size_Q = og.parameters.grid_size_Q
-    grid_size_M = og.parameters.grid_size_M
-    grid_size_C = og.parameters.grid_size_C
-    grid_size_W = int(og.parameters.grid_size_W)
-    grid_size_alpha = int(og.parameters.grid_size_alpha)
-    grid_size_beta = int(og.parameters.grid_size_beta)
-    grid_size_HS = og.parameters.grid_size_HS
-
     # Exogenous shock processes
     beta_hat, P_beta, beta_stat = og.st_grid.beta_hat,\
         og.st_grid.P_beta, og.st_grid.beta_stat
@@ -127,40 +105,30 @@ def genprofiles_operator(og,
     E, P_E, P_stat = og.st_grid.E, og.st_grid.P_E, og.st_grid.P_stat
 
     # Smaller, "fundamental" grids
-    A_DC = og.grid1d.A_DC
-    H =  og.grid1d.H
-    A = og.grid1d.A
-    M = og.grid1d.M
-    Q =  og.grid1d.Q
-    H_R = og.grid1d.H_R
-    W_W = og.grid1d.W_W
     V, Pi, DB = og.grid1d.V, og.grid1d.Pi, og.grid1d.DB
 
     # Medium sized and interpolation grids
     X_cont_W = og.interp_grid.X_cont_W
-    X_cont_W_bar = og.interp_grid.X_cont_W_bar
-    X_cont_W_hat = og.interp_grid.X_cont_W_hat
-    X_DCQ_W = og.interp_grid.X_DCQ_W
-    X_QH_W = og.interp_grid.X_QH_W
-    X_cont_WAM = og.interp_grid.X_cont_WAM
-    X_W_contgp = og.interp_grid.X_W_contgp
     X_QH_W_TS = og.interp_grid.X_QH_W_TS
     X_QH_WRTS = og.interp_grid.X_QH_WRTS
 
-    # Larger grids
-    X_V_func_DP_vals = og.big_grids.X_V_func_DP_vals
-    X_V_func_CR_vals = og.big_grids.X_V_func_CR_vals
-    X_W_bar_hdjex_vals = og.big_grids.X_W_bar_hdjex_vals
-    X_W_bar_hdjex_ind = og.big_grids.X_W_bar_hdjex_ind
-    X_all_hat_ind = og.big_grids.X_all_hat_ind
-    X_all_C_ind = og.big_grids.X_all_C_ind
-    X_all_B_ind = og.big_grids.X_all_B_ind
-    X_all_hat_vals = og.big_grids.X_all_hat_vals
-    X_all_C_vals = og.big_grids.X_all_C_vals
-    X_all_B_vals = og.big_grids.X_all_B_vals
-    X_all_ind = og.big_grids.X_all_ind
-    X_adj_func_ind = og.big_grids.X_adj_func_ind
-    X_nadj_func_ind = og.big_grids.X_nadj_func_ind
+    # Grid sizes
+    grid_size_A = og.parameters.grid_size_A
+    grid_size_DC = og.parameters.grid_size_DC
+    grid_size_H = og.parameters.grid_size_H
+    grid_size_Q = og.parameters.grid_size_Q
+    grid_size_M = og.parameters.grid_size_M
+    grid_size_C = og.parameters.grid_size_C
+    grid_size_W = int(og.parameters.grid_size_W)
+    grid_size_alpha = int(og.parameters.grid_size_alpha)
+    grid_size_beta = int(og.parameters.grid_size_beta)
+    grid_size_HS = og.parameters.grid_size_HS
+
+    #Shapes 
+    # Preset shapes
+    all_state_shape, all_state_shape_hat, v_func_shape,\
+    all_state_A_last_shape, policy_shape_nadj,\
+    policy_shape_adj = gen_policyout_arrays(og)
 
     @njit 
     def gen_VPi(points,\
@@ -171,21 +139,21 @@ def genprofiles_operator(og,
                 beta_ind,\
                 pi_ushock,\
                 v_ushock,\
-                Xi_cov,\
-                Xi_copi):
+                policy_prob_v,\
+                policy_prob_pi):
 
         """ Genrates voluntary contribution prob and 
             risk prob"""
 
-        X_cov_func = Xi_cov[Age,account_ind,E_ind,alpha_ind,beta_ind,:]
+        prob_v_func = policy_prob_v[Age][account_ind,E_ind,alpha_ind,beta_ind,:]
 
-        xi_V_vals = np.empty(len(V))
-        xi_V_vals[:] = eval_linear(X_cont_W,\
-                                 X_cov_func,\
+        prob_V_vals = np.empty(len(V))
+        prob_V_vals[:] = eval_linear(X_cont_W,\
+                                 prob_v_func,\
                                  points) 
-        xi_V_vals = xi_V_vals - max(xi_V_vals)  
-        xi_V_vals[np.isnan(xi_V_vals)] = 0
-        prob_v = np.exp(xi_V_vals)/np.sum(np.exp(xi_V_vals))
+        #xi_V_vals = xi_V_vals - max(xi_V_vals)  
+        prob_V_vals[np.isnan(prob_V_vals)] = 0
+        prob_v = prob_V_vals/np.sum(prob_V_vals)
 
         # Pick a random draw for the voluntary contribution (index in the vol.cont grid)
         V_ind  = np.arange(len(V))\
@@ -193,19 +161,19 @@ def genprofiles_operator(og,
         v = V[V_ind]
 
         # Pull out probabiltiy of risk share matrix for this cont state 
-        Xi_pi_func = Xi_copi[Age,account_ind,E_ind,alpha_ind,beta_ind,V_ind,:]
-        xi_Pi_vals = np.empty(len(Pi))
-        xi_Pi_vals[:] = eval_linear(X_cont_W,Xi_pi_func, points) 
+        prob_pi_func = policy_prob_pi[Age][account_ind,E_ind,alpha_ind,beta_ind,V_ind,:]
+        prob_pi_vals = np.empty(len(Pi))
+        prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points) 
         #xi_Pi_vals[np.isnan(xi_Pi_vals)] = 0
-        xi_Pi_vals = xi_Pi_vals - max(xi_Pi_vals)  
-        prob_Pi = np.exp(xi_Pi_vals)/np.sum(np.exp(xi_Pi_vals))
+        #xi_Pi_vals = xi_Pi_vals - max(xi_Pi_vals)  
+        prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
         Pi_ind  = np.arange(len(Pi))\
                     [np.searchsorted(np.cumsum(prob_Pi), pi_ushock)]
         pi = Pi[Pi_ind]
 
         return V_ind, v, Pi_ind, pi 
 
-    #@njit
+    @njit
     def seriesgen(age,\
                     wave_length,\
                     W,\
@@ -222,8 +190,8 @@ def genprofiles_operator(og,
                     policy_a_adj,\
                     policy_h_rent,\
                     policy_zeta,\
-                    policy_Xi_cov,\
-                    policy_Xi_copi,\
+                    policy_prob_v,\
+                    policy_prob_pi,\
                     policy_VF):
 
         """ Returns a time series of one agent to age 
@@ -328,8 +296,9 @@ def genprofiles_operator(og,
                 v_ushock  = V_ushock_ts[t]
                 args = (account_ind, E_ind, alpha_ind,\
                          beta_ind,pi_ushock, v_ushock,\
-                         policy_Xi_cov,policy_Xi_copi)
+                         policy_prob_v, policy_prob_pi)
                 V_ind, v, Pi_ind, pi = gen_VPi(points,t-tzero, *args)
+
 
                 # Next period DC assets (before returns)
                 # (recall domain of policy functions from def of eval_policy_W)
@@ -346,7 +315,7 @@ def genprofiles_operator(og,
                 wealth_adj  = wealth_no_adj + P_h[t]*h
 
                 # Get rent and adjustment multipler values  
-                zeta_func = policy_zeta[int(t-tzero), account_ind,\
+                zeta_func = policy_zeta[int(t-tzero)][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
@@ -363,7 +332,7 @@ def genprofiles_operator(og,
                 # decision on DC 
                 points_noadj = np.array([wealth_no_adj,DC_prime,TS_H, P_h[t], TS_M*(1+r_m)])
 
-                eta_func =  policy_etas_noadj[t-tzero, account_ind,\
+                eta_func =  policy_etas_noadj[t-tzero][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
@@ -379,7 +348,7 @@ def genprofiles_operator(og,
 
                 if renter1>0:
                     
-                    h_rent_func = policy_h_rent[t-tzero, account_ind,\
+                    h_rent_func = policy_h_rent[t-tzero][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
@@ -395,14 +364,14 @@ def genprofiles_operator(og,
                     TS_A_1 = min(max(A_min,wealth_rent - phi_r*H_services - TS_C), A_max_W)
                     TS_H_1 = H_min
 
-                elif np.abs(eta_val)<1 or wealth_adj<A_min:
+                elif eta_val<0 or wealth_adj<A_min:
 
-                    a_noadjust_func = policy_a_noadj[int(t-tzero),account_ind,\
+                    a_noadjust_func = policy_a_noadj[int(t-tzero)][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
                                                     Pi_ind,:]
-                    c_noadjust_func = policy_c_noadj[int(t-tzero), account_ind,\
+                    c_noadjust_func = policy_c_noadj[int(t-tzero)][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
@@ -422,17 +391,17 @@ def genprofiles_operator(og,
                     TS_H_1 = h 
 
                 else:
-                    a_prime_adj_func = policy_a_adj[t-tzero, account_ind,\
+                    a_prime_adj_func = policy_a_adj[t-tzero][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
                                                     Pi_ind,:]
-                    c_prime_adj_func = policy_c_adj[t-tzero, account_ind,\
+                    c_prime_adj_func = policy_c_adj[t-tzero][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
                                                     Pi_ind,:]
-                    H_adj_func = policy_h_adj[t-tzero, account_ind,\
+                    H_adj_func = policy_h_adj[t-tzero][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
                                                     beta_ind,\
@@ -454,7 +423,9 @@ def genprofiles_operator(og,
 
                     extra_payment = wealth_adj - TS_A_1 - TS_C \
                                     - TS_H_1*q*(1+tau_housing)
-                    #max_loan = (1-phi_c)
+                    
+                    max_loan = (1-phi_c)
+                    
                     TS_M_1 = max(0, (TS_M*(1-amort_rate(t-2)) - extra_payment)*(1+r_m))
                     #print(TS_M_1/TS_M_1*q)
 
@@ -465,7 +436,7 @@ def genprofiles_operator(og,
                 # If t not terminal, iterate forward 
                 if t== age:
                     wave_data_10 = np.array([account_ind,age, TS_A*norm,TS_M*norm, renter1,\
-                                            TS_H*norm, TS_DC*norm, TS_C*norm, \
+                                            TS_H_1*norm, TS_DC*norm, TS_C*norm, \
                                             TS_wage*norm, TS_V, TS_V*TS_wage*norm,TS_PI,\
                                             int(TS_hinv>0),int(TS_PI!=.7), int(TS_PI>.7), int(TS_PI>.7)*TS_PI,\
                                             int(TS_V>0),\
@@ -477,7 +448,7 @@ def genprofiles_operator(og,
                     age_wave_10 = age
                     age14 = age+ wave_length
                     wave_data_14 = np.array([account_ind,age_wave_10, TS_A*norm,TS_M*norm, renter1,\
-                                            TS_H*norm, TS_DC*norm, TS_C*norm, \
+                                            TS_H_1*norm, TS_DC*norm, TS_C*norm, \
                                             TS_wage*norm, TS_V,TS_V*TS_wage*norm,TS_PI,\
                                             int(TS_hinv>0), int(TS_PI!=.7), int(TS_PI>.7),int(TS_PI>.7)*TS_PI,
                                             int(TS_V>0),\
@@ -490,7 +461,7 @@ def genprofiles_operator(og,
 
         return wave_data_10, wave_data_14
     
-    #@njit
+    @njit
     def generate_TS(U,N,policy_c_noadj,\
                         etas_noadj,\
                         policy_a_noadj,\
@@ -499,8 +470,17 @@ def genprofiles_operator(og,
                         policy_a_adj,\
                         policy_h_rent,\
                         policy_zeta,\
-                        policy_Xi_cov,\
-                        policy_Xi_copi):
+                        policy_prob_v,\
+                        policy_prob_pi,\
+                        policy_VF):
+
+        """
+
+        Todo
+        ----
+
+        Remove reshaping of prob and v policy
+        """
 
         TSALL_10 = np.zeros((int((int(R)-int(tzero))*N*2),21))
         TSALL_14 = np.zeros((int((int(R)-int(tzero))*N*2),21))
@@ -514,12 +494,11 @@ def genprofiles_operator(og,
                     policy_a_adj,\
                     policy_h_rent,\
                     policy_zeta,\
-                    policy_Xi_cov,\
-                    policy_Xi_copi,\
+                    policy_prob_v,\
+                    policy_prob_pi,\
                     policy_VF)
         #print(policy_Xi_copi.shape)
         k=int(0)
-
         for age in np.arange(int(tzero), int(R)):
             for i in range(N):
                 length = int(age + wave_length+2) 
@@ -564,55 +543,116 @@ def genprofiles_operator(og,
 
         return TSALL_10, TSALL_14
 
-    def gen_pol_array():
-        """ Generates a policy array from 
-        HD files"""
-        policy_c_noadj = []
-        etas_noadj = []
+    def load_pol_array(ID, mod_name):
+        """ Unpacks a policy array from 
+        saved files on scratch
+
+        Paramters
+        ---------
+        ID: string
+            model ID
+
+        Returns
+        -------
+
+        Todo
+        ----
+        - Use loops to perform the unpacking below"""
+
+        numpy_vars_DC = {}
+        numpy_vars_DB = {}
+        os.chdir('/scratch/pv33/ls_model_temp/{}'.format(mod_name + '/'+ ID+'_acc_'+str(1)))
+        for np_name in glob.glob('*np[yz]'):
+            numpy_vars_DC[np_name] = dict(np.load(np_name))
+
+        os.chdir('/scratch/pv33/ls_model_temp/{}'.format(mod_name + '/'+ ID+'_acc_'+str(0)))
+        for np_name in glob.glob('*np[yz]'):
+            numpy_vars_DB[np_name] = dict(np.load(np_name))
+
+        var_keys = copy.copy(list(numpy_vars_DB.keys()))
+        for keys in var_keys:
+            numpy_vars_DB[keys.split('_')[1]] = numpy_vars_DB.pop(keys)
+        var_keys = copy.copy(list(numpy_vars_DC.keys()))
+        for keys in var_keys:
+            numpy_vars_DC[keys.split('_')[1]] = numpy_vars_DC.pop(keys)
+
+        policy_c_noadj= []
+        etas_noadj= []
         policy_a_noadj = []
         policy_c_adj = []
-        policy_h_adj = []
-        policy_a_adj = []
-        policy_h_rent = []
-        policy_zeta = []
-        policy_Xi_cov = []
-        policy_Xi_copi = []
+        policy_h_adj= []
+        policy_a_adj= []
+        policy_h_rent= []
+        policy_zeta= []
+        policy_prob_v= []
+        policy_prob_pi= []
+        
+        tzero = og.parameters.tzero
+        R = og.parameters.R
+        
+        vf_shape = ((len(DB),
+                    grid_size_W,
+                    grid_size_alpha,
+                    grid_size_beta,
+                    len(Pi),
+                    grid_size_A,
+                    grid_size_DC,
+                    grid_size_H,
+                    grid_size_Q,
+                    grid_size_M))
 
-        for Age in np.arange(int(tzero), int(R))[::-1]:
-            with np.load("/scratch/pv33/ls_model_temp/age_{}_acc_{}_id_0_pols".\
-                        format(Age, og.ID)) as data:
+        prob_v_shape = (int(len(DB)), grid_size_W,
+                                    grid_size_alpha,
+                                    grid_size_beta,
+                                    grid_size_A,
+                                    grid_size_DC,
+                                    grid_size_H,
+                                    grid_size_Q,
+                                    grid_size_M,
+                                    len(V))
 
-                     policy_c_adj.append(data['C_adj'])
-                     policy_h_adj.append(data['H_adj'])
-                     policy_a_adj.append(data['Aprime_adj'])
-                     policy_c_noadj.append(data['C_noadj'])
-                     etas_noadj.append(data['etas_noadj'])
-                     policy_a_noadj.append(data['Aprime_noadj'])
-                     policy_zeta.append(data['zeta'])
-                     policy_h_rent.append(data['H_rent'])
-                     policy_Xi_cov.append(data['Xi_cov'])
-                     policy_Xi_copi.append(data['Xi_copi'])
+        prob_pi_shape = (int(len(DB)), grid_size_W,
+                                      grid_size_alpha,
+                                      grid_size_beta,
+                                      len(V),
+                                      grid_size_A,
+                                      grid_size_DC,
+                                      grid_size_H,
+                                      grid_size_Q,
+                                      grid_size_M,
+                                      len(Pi))
+        
+        for Age in np.arange(int(og.parameters.tzero), int(og.parameters.R)):
 
-                     if Age== tzero:
-                        policy_VF = data['Policy_VF']
+                start = time.time()
+                policy_c_adj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['C_adj'],\
+                                         numpy_vars_DC[str(int(Age))]['C_adj'])))
+                policy_h_adj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['H_adj'],\
+                                         numpy_vars_DC[str(int(Age))]['H_adj'])))
+                policy_a_adj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['Aprime_adj'],\
+                                         numpy_vars_DC[str(int(Age))]['Aprime_adj'])))
+                policy_c_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['C_noadj'],\
+                                         numpy_vars_DC[str(int(Age))]['C_noadj'])))
+                etas_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['etas_noadj'],\
+                                         numpy_vars_DC[str(int(Age))]['etas_noadj'])))
+                policy_a_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['Aprime_noadj'],\
+                                         numpy_vars_DC[str(int(Age))]['Aprime_noadj'])))
+                policy_zeta.append(np.concatenate((numpy_vars_DB[str(int(Age))]['zeta'].reshape(all_state_shape_hat),\
+                                         numpy_vars_DC[str(int(Age))]['zeta'].reshape(all_state_shape_hat))))
+                policy_h_rent.append(np.concatenate((numpy_vars_DB[str(int(Age))]['H_rent'],\
+                                         numpy_vars_DC[str(int(Age))]['H_rent'])))
+                policy_prob_v.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_v'].reshape(prob_v_shape),\
+                                         numpy_vars_DC[str(int(Age))]['prob_v'].reshape(prob_v_shape))))
+                policy_prob_pi.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_pi'].reshape(prob_pi_shape),\
+                                         numpy_vars_DC[str(int(Age))]['prob_pi'].reshape(prob_pi_shape))))
+                print("Loaded policies for DB age {} in {}".format(Age, time.time()-start))
 
-        for Age in np.arange(int(tzero), int(R))[::-1]:
-            with np.load("/scratch/pv33/ls_model_temp/age_{}_acc_{}_id_1_pols".\
-                        format(Age, og.acc_ind[0], og.ID)) as data:
-                     
-                 policy_c_adj[Age-tzero] = np.concatenate((policy_c_adj[Age-tzero], data['C_adj']))
-                 policy_h_adj[Age-tzero] = np.concatenate((policy_h_adj[Age-tzero], data['H_adj']))
-                 policy_a_adj[Age-tzero] = np.concatenate((policy_a_adj[Age-tzero], data['Aprime_adj']))
-                 policy_a_noadj[Age-tzero] = np.concatenate((policy_a_noadj[Age-tzero], data['Aprime_noadj']))
-                 etas_noadj[Age-tzero] = np.concatenate((etas_noadj[Age-tzero], data['etas_noadj']))
-                 policy_c_noadj[Age-tzero] = np.concatenate((policy_c_noadj[Age-tzero], data['C_noadj']))
-                 policy_zeta[Age-tzero] = np.concatenate((policy_zeta[Age-tzero], data['zeta']))
-                 policy_h_rent[Age-tzero] = np.concatenate((policy_h_rent[Age-tzero], data['H_rent']))
-                 policy_Xi_cov[Age-tzero] = np.concatenate((policy_Xi_cov[Age-tzero], data['Xi_cov']))
-                 policy_Xi_copi[Age-tzero] = np.concatenate((policy_Xi_copi[Age-tzero], data['Xi_copi']))
-
-                 if Age== tzero:
-                    policy_VF = np.concatenate((policy_VF, data['Policy_VF']))
+                if Age== og.parameters.tzero:
+                    policy_VF = np.concatenate((numpy_vars_DB[str(int(Age))]['policy_VF'].reshape(vf_shape),\
+                                        numpy_vars_DC[str(int(Age))]['policy_VF'].reshape(vf_shape)))
+                del numpy_vars_DB[str(int(Age))]
+                del numpy_vars_DC[str(int(Age))]
+                gc.collect()
 
         return policy_c_noadj,\
                 etas_noadj,\
@@ -622,15 +662,18 @@ def genprofiles_operator(og,
                 policy_a_adj,\
                 policy_h_rent,\
                 policy_zeta,\
-                policy_Xi_cov,\
-                policy_Xi_copi
+                policy_prob_v,\
+                policy_prob_pi,\
+                policy_VF
 
-    def generate_TSDF(U,N,pol_array):
+    def generate_TSDF(U,N,ID, mod_name):
 
-        policies = gen_pol_array()
+        """ Unpacks polices, generates time-series, 
+            labels time-series and returns data-frame"""
+
+        policies = load_pol_array(ID,mod_name)
 
         TSALL_10, TSALL_14 = generate_TS(U,N,*policies)
-
         TSALL_10_df = pd.DataFrame(TSALL_10)
         TSALL_14_df = pd.DataFrame(TSALL_14)
 
@@ -663,14 +706,11 @@ def genprofiles_operator(og,
 
     return generate_TSDF
 
-def gen_panel_ts(og, pol_array, U,N):
+def gen_panel_ts(og, U,N):
     generate_TSDF = genprofiles_operator(og)
-    TSALL_10_df, TSALL_14_df = generate_TSDF(U,N,pol_array)
+    TSALL_10_df, TSALL_14_df = generate_TSDF(U,N,og.ID, og.mod_name)
 
     return TSALL_10_df, TSALL_14_df
-
-
-
 
 def gen_moments(TSALL_10_df, TSALL_14_df):
 

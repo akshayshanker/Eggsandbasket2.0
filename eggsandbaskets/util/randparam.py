@@ -28,28 +28,19 @@ def rand_p_generator(
         np.array([(bdns) for key, bdns in param_random_bounds.items()] ) 
 
     # generate random sample
-
+    in_range = False
     if deterministic == 0 and initial == 0:
 
-        error_flag = np.random.uniform(0,1)
-        if error_flag<.3:
-            draws = np.random.multivariate_normal(param_random_means, param_random_cov*10)
-
-            draws = np.clip(draws, random_param_bounds_ar[:,0],random_param_bounds_ar[:,1])
-
-            for i,key in zip(np.arange(len(draws)),param_random_bounds.keys()):
-                parameters[key]  = draws[i]
-        elif error_flag<.9:
+        while in_range == False:
             draws = np.random.multivariate_normal(param_random_means, param_random_cov)
 
-            draws = np.clip(draws, random_param_bounds_ar[:,0],random_param_bounds_ar[:,1])
-
+            if np.sum(draws> random_param_bounds_ar[:,1]) + np.sum(draws<random_param_bounds_ar[:,0])==0:
+                in_range = True
+                print("in range")
+            else:
+                pass
             for i,key in zip(np.arange(len(draws)),param_random_bounds.keys()):
                 parameters[key]  = draws[i]
-        else:
-            for key in param_random_bounds:
-                parameters[key]  = np.random.uniform(param_random_bounds[key][0], param_random_bounds[key][1])
-            
 
     if deterministic == 0 and initial == 1:
         for key in param_random_bounds:

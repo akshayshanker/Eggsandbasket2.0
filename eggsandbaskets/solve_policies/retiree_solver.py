@@ -67,6 +67,8 @@ def retiree_func_factory(og):
     A,A_DC, Q, H, M, W_R            = og.grid1d.A,og.grid1d.A_DC, og.grid1d.Q, og.grid1d.H, og.grid1d.M,og.grid1d.W_R
     A_R, H_Q, A_Q_R,W_Q_R           = og.grid1d.A_R, og.cart_grids.H_Q, og.cart_grids.A_Q_R,og.interp_grid.W_Q_R
     E, P_E, P_stat                  = og.st_grid.E, og.st_grid.P_E, og.st_grid.P_stat
+    Pi = og.grid1d.Pi
+    M = og.grid1d.M
 
     A_min, C_min, C_max, \
     H_min, A_max_R                  = og.parameters.A_min, og.parameters.C_min, og.parameters.C_max,\
