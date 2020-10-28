@@ -17,6 +17,7 @@ mpython SMM.py
 """
 
 # import packages
+import yaml
 import numpy as np
 import time
 import warnings
@@ -29,12 +30,12 @@ from numpy import genfromtxt
 import csv
 import time
 import dill as pickle 
-from randparam   import rand_p_generator
 import copy
 import sys
 import pandas as pd
 
 # Housing model modules
+
 import lifecycle_model 
 from solve_policies.worker_solver import generate_worker_pols
 from generate_timeseries.tseries_generator import gen_panel_ts, gen_moments, sortmoments, genprofiles_operator
@@ -51,7 +52,6 @@ def gen_communicators(world, block_size_layer_1,
 	key_layer1 = int(world_rank%block_size_layer_1)
 
 	layer_1_comm = world.Split(color_layer_1,key_layer1)
-
 	layer_1_rank = layer_1_comm.Get_rank()
 
 	# Number of cores to process each DB/DC
@@ -60,11 +60,9 @@ def gen_communicators(world, block_size_layer_1,
 	key_layer2 = int(layer_1_rank%block_size_layer_1)
 
 	layer_2_comm = layer_1_comm.Split(color_layer_2,key_layer2)
-
 	layer_2_rank = layer_2_comm.Get_rank()
 
 	# TS generation layers
-	
 	blocks_layer_ts = world_size/block_size_layer_ts
 	color_layer_ts = int(world_rank/block_size_layer_ts)
 	key_layer_ts = int(world_rank%block_size_layer_ts)
@@ -116,9 +114,7 @@ def gen_RMS(LS_models, moments_data, layer_1_comm,layer_2_comm, TSN,U):
 	Generate root mean square error 
 	between simulated moments for HousingModel 
 	and data moments 
-
 	"""
-
 	# In each layer 1 group, first two ranks 
 	# perform DB and second two ranks 
 	# perform DC 
@@ -157,37 +153,42 @@ def gen_RMS(LS_models, moments_data, layer_1_comm,layer_2_comm, TSN,U):
 
 		return 1-np.sqrt((1/N_err)*np.sum(np.square(deviation))/norm)
 	# Return none if not layer 1 master 
-	else
+	else:
 		return None
 
-	def load_tm1_iter(model_name):
-		gamma_XEM = pickle.load(open("/scratch/pv33/{}/gamma_XEM.smms".format(model_name),"rb"))
-		S_star = pickle.load(open("/scratch/pv33/{}/S_star.smms".format(model_name),"rb"))
-		t = pickle.load(open("/scratch/pv33/{}/t.smms".format(model_name),"rb"))
-		sampmom = pickle.load(open("/scratch/pv33/Archive/{}/latest_means_iter.smms".format(model_name),"rb"))
+def load_tm1_iter(model_name, new = True):
+	if new == True:
+		S_star,gamma_XEM	= np.full(d,0), np.full(d,0)
+		t = 0
+	else:
+		S_star = pickle.load(open("/scratch/pv33/ls_model_temp/{}/S_star.smms".format(model_name),"rb"))
+		gamma_XEM = pickle.load(open("/scratch/pv33/ls_model_temp/{}/gamma_XEM.smms".format(model_name),"rb"))
+		t = pickle.load(open("/scratch/pv33/ls_model_temp/{}/t.smms".format(model_name),"rb"))
+	
+	sampmom = pickle.load(open("/scratch/pv33/ls_model_temp//{}/latest_means_iter.smms".format(model_name),"rb"))
 	return gamma_XEM, S_star,t, sampmom
 
-
-
-
 def iter_SMM(eggbasket_config, 
-			 sampmom, # t-1 parameter means 
+			 param_random_bounds, 
+			 sampmom, 	   # t-1 parameter means 
 			 moments_data, # data moments 
 			 layer_1_comm, 
 			 layer_2_comm,
 			 TSN,
-			 U, # fixed and stored model errors 
+			 U, 		# fixed and stored model errors 
 			 gamma_XEM, # lower error array
-			 S_star # upper error array
-			):
+			 S_star, 
+			 t): 		# upper error array
+	
 	""" iterate on the SMM cross-entropy
 	'"""
 
-	# Generate LifeCycleParam class (each master on layer 1 generates a random sample)
+	# Generate LifeCycleParam class (master on layer 1: new random sample)
 	indexed_errors = None
 	parameter_list = None
+
 	if layer_1_comm.rank == 0: 
-		LS_models =  lifecycle_model\
+		LS_models = lifecycle_model\
 						.LifeCycleParams(model_name,\
 									eggbasket_config['baseline_lite'],
 									random_draw = True,
@@ -195,18 +196,17 @@ def iter_SMM(eggbasket_config,
 									param_random_means = sampmom[0], 
 									param_random_cov = sampmom[1], 
 									uniform = False)
-		parameters = LS_models.paramters
+		parameters = LS_models.parameters
 	else:
-		LS_models = None
+		LS_models  = None
 		parameters = None
 	
 	# Broadcast LifeCycleParam from each Layer 1 master to workers
 	LS_models = layer_1_comm.bcast(LS_models, root = 0)
 	
 	if world.rank ==0:
-		print("Distributng iter {}".format(t))
-		errors_ind = [0,0]
-
+		print("Random Parameters drawn, distributng iteration {}".format(t))
+		
 	def SMM_objective():
 		"""SMM objective to be maximised 
 		as function of params"""
@@ -219,19 +219,20 @@ def iter_SMM(eggbasket_config,
 						U)
 		if layer_1_comm.rank == 0:
 			return [LS_models.ID, RMS]
-		else 
+		else: 
 			return None
 
 	errors_ind = SMM_objective()
 
+	# Gather parameters and corresponding errors from all ranks
+	# Only layer 1 rank 0 values are not None
 	comm.Barrier()
 	indexed_errors 	= world.gather(errors_ind, root=0)
 	indexed_errors  = [item for item in indexed_errors if item is not None]
 	parameter_list 	= world.gather(parameters, root=0)
 	parameter_list  = [item for item in parameter_list if item is not None]
 
-	# Master does selection of elite parameters and drawing new means 
-
+	# World master does selection of elite parameters and drawing new means 
 	if world.rank ==0:
 		parameter_list_dict = dict([(param['param_id'], param)\
 							 for param in parameter_list[1:]])
@@ -239,28 +240,35 @@ def iter_SMM(eggbasket_config,
 		indexed_errors_arr = indexed_errors_arr[np.argsort(\
 									-indexed_errors_arr[:,1])]
 		
-		number_N = len(indexed_errors_arr) - np.sum(np.isnan(indexed_errors_arr[:,1]))
+		number_N = len(indexed_errors_arr)\
+					- np.sum(np.isnan(indexed_errors_arr[:,1]))
 		
 		elite_errors_indexed = indexed_errors_arr[0: N_elite]
 
-		weights = np.exp((elite_errors_indexed[:,1] - np.min(elite_errors_indexed[:,1]))\
-										/ (np.max(elite_errors_indexed[:,1]) -np.min(elite_errors_indexed[:,1])))
+		weights = np.exp((elite_errors_indexed[:,1]\
+					 - np.min(elite_errors_indexed[:,1]))\
+						/ (np.max(elite_errors_indexed[:,1])\
+						 	- np.min(elite_errors_indexed[:,1])))
 		gamma_XEM = np.append(gamma_XEM,\
-									 elite_errors_indexed[-1, 1])
+							 	elite_errors_indexed[-1, 1])
 		S_star = np.append(S_star,\
-									 elite_errors_indexed[0, 1])
+								elite_errors_indexed[0, 1])
 
 		error_gamma = gamma_XEM[d +t-1] \
-									- gamma_XEM[d +t -2]
+						- gamma_XEM[d +t -2]
 		error_S = S_star[int(d +t-1)]\
-									- S_star[int(d +t -2)]
+						- S_star[int(d +t -2)]
 
 		means, cov = gen_param_moments(parameter_list_dict,\
 								param_random_bounds,\
 								elite_errors_indexed, weights)
+		print("...generated and saved sampling moments")
+		print("...time elapsed: {} minutes".format((time.time()-start)/60))
 
-	gc.collect()
-	return Number_N, [means, cov], gamma_XEM, S_star, error_gamma, error_S
+		gc.collect()
+		return Number_N, [means, cov], gamma_XEM, S_star, error_gamma, error_S
+	else:
+		return None 
 
 def gen_param_moments(parameter_list_dict, param_random_bounds,\
 						 selected, weights):
@@ -299,7 +307,6 @@ def gen_param_moments(parameter_list_dict, param_random_bounds,\
 
 	return means, cov
 
-
 if __name__ == "__main__":
 
 	from mpi4py import MPI as MPI4py
@@ -316,14 +323,13 @@ if __name__ == "__main__":
 	settings_folder = 'settings/'
 	model_name = 'test'
 
-
 	# Create communicators 
 	layer_1_comm, layer_2_comm, layer_ts_comm = gen_communicators(world,
 													block_size_layer_1,
 													block_size_layer_2,
 													block_size_layer_ts)
 	# Load model settings 
-	with open("{}settings.yml", "r") as stream:
+	with open("{}settings.yml".format(settings_folder), "r") as stream:
 		eggbasket_config = yaml.safe_load(stream)
 
 	with open('{}random_param_bounds.csv'\
@@ -341,53 +347,45 @@ if __name__ == "__main__":
 	# Estimation parameters  
 	tol = 1E-8
 	TSN = 250
-	N_elite = 45
+	N_elite = 4
 	d = 3
 	start = time.time()
-	U = pickle.load(open("/scratch/pv33/{}/seed_U.smms"\
+	U = pickle.load(open("/scratch/pv33/ls_model_temp/{}/seed_U.smms"\
 			.format(model_name),"rb")) 
-	
+	#U = np.random.rand(6,100,TSN,100)   
+	t = 0
+
 	# Load previous iteration's parameters settings and means
-	gamma_XEM_old, S_star_old,t_old, sampmom = load_tm1_iter(model_name)
+	gamma_XEM, S_star,t, sampmom = load_tm1_iter(model_name)
+	convg = 1
+	
+	# Iterate on the SMM
+	while convg > tol:
+		iter_return= \
+			iter_SMM(eggbasket_config, param_random_bounds, sampmom,moments_data,\
+					 layer_1_comm,layer_2_comm,TSN,U,gamma_XEM,S_star,t) 	
+		if world.rank ==0:
+			Number_N, sampmom, gamma_XEM, S_star, error_gamma, error_S = iter_return
+			pickle.dump(sampmom,open("/scratch/pv33/ls_model_temp/{}/latest_means_iter.smms"\
+						.format(model_name),"wb"))
+			pickle.dump(gamma_XEM,open("/scratch/pv33/ls_model_temp/{}/gamma_XEM.smms"\
+						.format(model_name),"wb"))
+			pickle.dump(S_star,open("/scratch/pv33/ls_model_temp/{}/S_star.smms"\
+						.format(model_name),"wb"))
+			pickle.dump(t,open("/scratch/pv33/ls_model_temp/{}/t.smms"\
+						.format(model_name),"wb"))
+			print("...iteration {} on {} cores,\
+					 elite_gamma error are {} and elite S error are {}"\
+						.format(t, number_N, error_gamma, error_S))
 
+			convg = int(np.abs(max(S_star[-d:]) - min(S_star[-d:]))< tol)
+			print("...stop_error is {}, convergence is {}"\
+					.format(np.abs(max(S_star[-d:]) - min(S_star[-d:])), convg))
+			convg_cov = int(np.abs(np.max(cov))< tol )
+			print("...cov error is {}, convergence is {}"\
+					.format((np.abs(np.max(cov))), convg_cov))
+			convg = int(np.abs(max(S_star[-d:]) - min(S_star[-d:]))< tol)
+			convg_cov = int(np.abs(np.max(cov))< tol )
+			t = t+1
 
-	pickle.dump([means, cov],open("/scratch/pv33/{}/latest_means_iter.smms".format(model_name),"wb"))
-	pickle.dump(gamma_XEM,open("/scratch/pv33/{}/gamma_XEM.smms".format(model_name),"wb"))
-	pickle.dump(S_star,open("/scratch/pv33/{}/S_star.smms".format(model_name),"wb"))
-	pickle.dump(t,open("/scratch/pv33/{}/t.smms".format(model_name),"wb"))
-		
-
-	print("...iteration {} on {} cores, elite_gamma error are {} and elite S error are {}"\
-	.format(t, number_N, error_gamma, error_S))
-
-	convg = int(np.abs(max(S_star[-d:]) - min(S_star[-d:]))< tol)
-
-	print("...stop_error is {}, convergence is {}".format(np.abs(max(S_star[-d:]) - min(S_star[-d:])), convg))
-
-	means, cov = gen_param_moments(parameter_list_dict,\
-						param_random_bounds,\
-						elite_errors_indexed, weights)
-
-	convg_cov = int(np.abs(np.max(cov))< tol )
-	print("...cov error is {}, convergence is {}".format((np.abs(np.max(cov))), convg_cov))
-
-	pickle.dump([means, cov],\
-				open("/scratch/pv33/{}/latest_means_iter.smms".format(model_name),"wb"))
-	pickle.dump(gamma_XEM,\
-				open("/scratch/pv33/{}/gamma_XEM.smms".format(model_name),"wb"))
-	pickle.dump(S_star,\
-				open("/scratch/pv33/{}/S_star.smms".format(model_name),"wb"))
-
-	pickle.dump(t,\
-				open("/scratch/pv33/{}/t.smms".format(model_name),"wb"))
-
-	print("...generated and saved sampling moments")
-	print("...time elapsed: {} minutes".format((time.time()-start)/60))
-
-
-	convg = int(np.abs(max(S_star[-d:]) - min(S_star[-d:]))< tol)
-
-	convg_cov = int(np.abs(np.max(cov))< tol )
-
-
-
+		world.bcast(convg, root = 0)

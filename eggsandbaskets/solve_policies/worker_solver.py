@@ -43,7 +43,7 @@ from eggsandbaskets.util.helper_funcs import gen_policyout_arrays, d0, interp_as
     gen_reshape_funcs, einsum_row
 
 
-def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False):
+def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False, verbose = False):
 
     """ Generates solver of worker policies
 
@@ -214,8 +214,8 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
         if comm.rank ==0:
             X_all_ind_W_vals = data['X_all_ind_W_vals']
             X_prime_vals = data['X_prime_vals']
-
-    print("Opened saved points in {} seconds".format(time.time()-start))
+    if verbose == True:
+        print("Opened saved points in {} seconds".format(time.time()-start))
 
     # generate all the re-shaping functions
     reshape_out_pi, reshape_out_V, reshape_X_bar,\
@@ -823,12 +823,12 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
             h_clean = H_R[~np.isnan(wealth_bar_reshape[i])]
             h_x = np.take(h_clean, np.argsort(wealth_x))
 
-            print(h_x)
+            #print(h_x)
             c_clean = C_adj[i][~np.isnan(wealth_bar_reshape[i])]
             c_x = np.take(c_clean, np.argsort(wealth_x))
 
             wealth_xs = np.sort(wealth_x)
-            print(wealth_xs)
+            #print(wealth_xs)
 
             assets_prime_adj_1[i] = interp_as(wealth_xs, assts_x, W_W)
             assets_prime_adj_1[i][assets_prime_adj_1[i] <= 0] = A_min
@@ -2255,7 +2255,8 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
 
             # Step 2: Evaluate renter and non- adj pol and points on rank 0
             if comm.rank == 0:
-                print("Solving for age_{}".format(Age))
+                if verbose == True:
+                    print("Solving for age_{}".format(Age))
                 noadj_vals,C_noadj, etas_noadj, Aprime_noadj =\
                 gen_RHS_noadj(t,\
                                 mort_func,\
@@ -2304,7 +2305,8 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
                 comm.Recv(C_adj, source =1, tag= 5)
                 comm.Recv(H_adj, source =1, tag= 6)
                 comm.Recv(Aprime_adj, source =1, tag= 7)
-                print("Solved eval_policy_W of age {} in {} seconds"\
+                if verbose == True:
+                    print("Solved eval_policy_W of age {} in {} seconds"\
                     .format(Age, time.time() - start))
                 #print(H_adj[0,1,1,1,1,:,1,1,1])
             
@@ -2321,8 +2323,9 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
                 (UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
                 Lambda_B, VF_B, Xi, UF_B, zeta) =  B_funcs
 
-                print("Solved gen_RHS_UC_func of age {} in {} seconds".
-                format(Age, time.time() - start))
+                if verbose == True:
+                    print("Solved gen_RHS_UC_func of age {} in {} seconds".
+                    format(Age, time.time() - start))
 
                 # Step 5: Condition out discrete choice and preference shocks
                 start = time.time()
@@ -2334,9 +2337,9 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
                                                          UC_prime_M_B,
                                                          Lambda_B, VF_B,\
                                                         Xi, UF_B)
-                
-                print("Solved UC_cond_DC of age {} in {} seconds".
-                      format(Age, time.time() - start))
+                if verbose == True:
+                    print("Solved UC_cond_DC of age {} in {} seconds".
+                          format(Age, time.time() - start))
 
                 # Step 6: Condition out DC return and house price shocks
                 start = time.time()
@@ -2347,10 +2350,10 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
                                   UC_prime_HFC_DCC,
                                   UC_prime_M_DCC,
                                   Lambda_DCC, VF_DCC, UF_DCC)
-                
-                print("Solved UC_cond_all of age {} in {} seconds".
-                      format(Age, time.time() - start))
-                print("Iteration time was {}".format(time.time() - start2))
+                if verbose == True:
+                    print("Solved UC_cond_all of age {} in {} seconds".
+                          format(Age, time.time() - start))
+                    print("Iteration time was {}".format(time.time() - start2))
 
                 # Step 7: Save policy functions to scratch
                 start = time.time()
@@ -2379,8 +2382,9 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
                          prob_v = prob_v.astype(np.float32),\
                          prob_pi =prob_pi.astype(np.float32),\
                          policy_VF = policy_VF)
-                    print("Saved policies in {} seconds"\
-                                    .format(-time.time()+ time.time()))
+                    if verbose == True:
+                        print("Saved policies in {} seconds"\
+                                        .format(-time.time()+ time.time()))
 
                 else:
                     np.savez_compressed("{}/age_{}_acc_{}_id_{}_pols".\
@@ -2395,8 +2399,9 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
                          H_rent = H_rent,\
                          prob_v = prob_v.astype(np.float32),\
                          prob_pi =prob_pi.astype(np.float32))
-                    print("Saved policies in {} seconds"\
-                        .format(-time.time()+ time.time()))
+                    if verbose == True:
+                        print("Saved policies in {} seconds"\
+                            .format(-time.time()+ time.time()))
                     del C_adj, H_adj, Aprime_adj, C_noadj,\
 
 
@@ -2416,8 +2421,10 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False)
                 comm.Recv(VF, source= 0, tag = 224)
 
             mem = virtual_memory()
-            print(mem.available/mem.total)
-        print("Solved lifecycle model in {} seconds".format(time.time() - start1))
+            
+            if verbose == True:
+                print(mem.available/mem.total)
+                print("Solved lifecycle model in {} seconds".format(time.time() - start1))
         return ID 
     return solve_LC_model
 
@@ -2438,6 +2445,7 @@ def generate_worker_pols(og,\
     solve_LC_model = worker_solver_factory(og, comm, gen_R_pol,\
                                              scr_path = scr_path,\
                                              gen_newpoints = gen_newpoints,\
+                                             verbose = False
                                              )
     del og
     og = {}
