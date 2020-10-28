@@ -2220,7 +2220,7 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False,
                                                          = gen_R_pol()
             ret_pols\
              = (UC_prime, UC_prime_H,UC_prime_HFC, UC_prime_M, Lambda, VF)
-            pickle.dump(ret_pols, open("{}/ret_pols_{}.pol".format(ret_path, str(acc_ind[0])), "wb"))
+            pickle.dump(ret_pols, open("{}/ret_pols_{}.pol".format(pol_path_id, str(acc_ind[0])), "wb"))
         else:
             pass 
 
@@ -2228,7 +2228,7 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False,
         if load_ret == 1 or comm.rank==1:
             # Load retiree policies
             ret_pols = pickle.load(open("{}/ret_pols_{}.pol"\
-                                        .format(ret_path, str(acc_ind[0])), "rb"))
+                                        .format(pol_path_id, str(acc_ind[0])), "rb"))
             (UC_prime, UC_prime_H,UC_prime_HFC, UC_prime_M, Lambda, VF)\
                                         = ret_pols
 
@@ -2374,13 +2374,13 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False,
                          C_adj = C_adj,\
                          H_adj = H_adj,\
                          Aprime_adj = Aprime_adj,\
-                         C_noadj =C_noadj,\
+                         C_noadj = C_noadj,\
                          etas_noadj = np.log(np.abs((etas_noadj))).astype(np.float32),\
                          Aprime_noadj = Aprime_noadj,\
                          zeta = np.log(zeta).astype(np.float32),\
                          H_rent = H_rent,\
                          prob_v = prob_v.astype(np.float32),\
-                         prob_pi =prob_pi.astype(np.float32),\
+                         prob_pi = prob_pi.astype(np.float32),\
                          policy_VF = policy_VF)
                     if verbose == True:
                         print("Saved policies in {} seconds"\
@@ -2398,7 +2398,7 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False,
                          zeta = np.log(zeta).astype(np.float32),\
                          H_rent = H_rent,\
                          prob_v = prob_v.astype(np.float32),\
-                         prob_pi =prob_pi.astype(np.float32))
+                         prob_pi = prob_pi.astype(np.float32))
                     if verbose == True:
                         print("Saved policies in {} seconds"\
                             .format(-time.time()+ time.time()))
@@ -2432,7 +2432,7 @@ def worker_solver_factory(og, comm, gen_R_pol, scr_path,  gen_newpoints = False,
 def generate_worker_pols(og,\
                         comm,\
                         load_retiree = 1,\
-                        ret_sol_path = '/scratch/pv33',\
+                        ret_sol_path = '/scratch/pv33/',\
                         scr_path = '/scratch/pv33/ls_model_temp/',\
                         gen_newpoints = False):
 

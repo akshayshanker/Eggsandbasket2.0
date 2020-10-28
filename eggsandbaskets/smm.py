@@ -1,30 +1,26 @@
   
 """
-Module estiamates HousingModel using Simualted Method of Moments
+Module estimates HousingModel using Simualted Method of Moments
 Minimisation performed using Cross-Entropy method (see Kroese et al)
 
-Script must be run using Mpi: 
+Script must be run using Mpi with 4 * number of simulation cores.
 
-Example (on Gadi):
+Example (on Gadi normal compute node):
 
 module load python3/3.7.4
 module load openmpi/4.0.2
 
-alias mpython='mpiexec -np 480 `which python3`'
  
-mpython SMM.py
-
+mpiexec -n 480 python3 -m mpi4py smm.py
 """
 
 # import packages
 import yaml
+import gc
 import numpy as np
 import time
 import warnings
-
 warnings.filterwarnings('ignore')
-
-
 from collections import defaultdict
 from numpy import genfromtxt
 import csv
@@ -35,15 +31,20 @@ import sys
 import pandas as pd
 
 # Housing model modules
-
 import lifecycle_model 
 from solve_policies.worker_solver import generate_worker_pols
-from generate_timeseries.tseries_generator import gen_panel_ts, gen_moments, sortmoments, genprofiles_operator
-
+from generate_timeseries.tseries_generator import gen_panel_ts,\
+					 gen_moments, sortmoments, genprofiles_operator
 
 def gen_communicators(world, block_size_layer_1, 
-					block_size_layer_2,
-					block_size_layer_ts):
+						block_size_layer_2,
+						block_size_layer_ts):
+
+	""" Generates sub-communicators. There are N 
+		Layer 1 communicator groups with 4 cores each,
+		each solving a model for a parameter vector. There are N/2 
+		Layer 2 communicator groups with 2 cores each, each layer 2
+		group solving a DB or DC for a parameter vector""" 
 
 	# Number cores to process each LS model 
 	# Should be 2x2
@@ -70,7 +71,6 @@ def gen_communicators(world, block_size_layer_1,
 	layer_ts_comm = world.Split(color_layer_ts,key_layer_ts)
 
 	return layer_1_comm, layer_2_comm, layer_ts_comm
-
 
 def gen_format_moments(TS1,TS2, moments_data):
 	"""Gen simulated moments, labels
@@ -111,7 +111,7 @@ def gen_format_moments(TS1,TS2, moments_data):
 
 def gen_RMS(LS_models, moments_data, layer_1_comm,layer_2_comm, TSN,U):
 	"""
-	Generate root mean square error 
+	Simulate model for param vector and generate root mean square error 
 	between simulated moments for HousingModel 
 	and data moments 
 	"""
@@ -120,20 +120,23 @@ def gen_RMS(LS_models, moments_data, layer_1_comm,layer_2_comm, TSN,U):
 	# perform DC 
 	if layer_1_comm.rank == 0 or layer_1_comm.rank == 1:
 		og  = LS_models.og_DB
+		og.ID = 'ZE0SFT_20201028-171646_test'
+		LS_models.param_id = 'ZE0SFT_20201028-171646_test'
 
 	if layer_1_comm.rank == 2 or layer_1_comm.rank == 3:
 		og  = LS_models.og_DC
+		og.ID = 'ZE0SFT_20201028-171646_test'
+		LS_models.param_id = 'ZE0SFT_20201028-171646_test'
 	
 	# Each layer two group solves the model  
-	policies = generate_worker_pols(og,layer_2_comm, load_retiree = 1,\
-										 gen_newpoints = False)
+	#policies = generate_worker_pols(og,layer_2_comm, load_retiree = 0,\
+	#									 gen_newpoints = False)
 
 	# Generate time series on each Layer 1 master 
 	if layer_1_comm.rank == 0: 
 
 		# We  use the LifeCycle model instance on layer 1 master
 		# to generate the TS since it contains the parameter ID (og.ID)
-		generate_TSDF = genprofiles_operator(og)
 		TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
 
 		# Generate and sort moments
@@ -145,9 +148,9 @@ def gen_RMS(LS_models, moments_data, layer_1_comm,layer_2_comm, TSN,U):
 		gc.collect()
 
 		deviation = (moments_sim_array\
-									[~np.isnan(moments_data_array)]\
-									  - moments_data_array\
-									  [~np.isnan(moments_data_array)])
+					[~np.isnan(moments_data_array)]\
+					  - moments_data_array\
+					  [~np.isnan(moments_data_array)])
 		norm  = np.sum(np.square(moments_data_array[~np.isnan(moments_data_array)]))
 		N_err = len(deviation)
 
@@ -157,30 +160,39 @@ def gen_RMS(LS_models, moments_data, layer_1_comm,layer_2_comm, TSN,U):
 		return None
 
 def load_tm1_iter(model_name, new = True):
+	""" Initializes array of best performer and least best in the 
+		elite set (see notationin Kroese et al)
+	""" 
 	if new == True:
 		S_star,gamma_XEM	= np.full(d,0), np.full(d,0)
 		t = 0
 	else:
-		S_star = pickle.load(open("/scratch/pv33/ls_model_temp/{}/S_star.smms".format(model_name),"rb"))
-		gamma_XEM = pickle.load(open("/scratch/pv33/ls_model_temp/{}/gamma_XEM.smms".format(model_name),"rb"))
-		t = pickle.load(open("/scratch/pv33/ls_model_temp/{}/t.smms".format(model_name),"rb"))
+		S_star = pickle\
+					.load(open("/scratch/pv33/ls_model_temp/{}/S_star.smms".format(model_name),"rb"))
+		gamma_XEM = pickle\
+					.load(open("/scratch/pv33/ls_model_temp/{}/gamma_XEM.smms".format(model_name),"rb"))
+		t = pickle.load(open("/scratch/pv33/ls_model_temp/{}/t.smms"\
+					.format(model_name),"rb"))
 	
-	sampmom = pickle.load(open("/scratch/pv33/ls_model_temp//{}/latest_means_iter.smms".format(model_name),"rb"))
+	sampmom = pickle.load(open("/scratch/pv33/ls_model_temp//{}/latest_means_iter.smms"\
+				.format(model_name),"rb"))
 	return gamma_XEM, S_star,t, sampmom
 
 def iter_SMM(eggbasket_config, 
 			 param_random_bounds, 
 			 sampmom, 	   # t-1 parameter means 
 			 moments_data, # data moments 
-			 layer_1_comm, 
-			 layer_2_comm,
+			 layer_1_comm, # layer 1 communicator 
+			 layer_2_comm, # layer 2 communicator 
 			 TSN,
 			 U, 		# fixed and stored model errors 
-			 gamma_XEM, # lower error array
-			 S_star, 
-			 t): 		# upper error array
+			 gamma_XEM, # lower elite performer
+			 S_star, 	# upper elite performer
+			 t): 		# iteration number 
 	
-	""" iterate on the SMM cross-entropy
+	""" Initializes parameters and LifeCycel model and peforms 
+		one iteration of the SMM, returning updated sampling distribution
+
 	'"""
 
 	# Generate LifeCycleParam class (master on layer 1: new random sample)
@@ -218,30 +230,36 @@ def iter_SMM(eggbasket_config,
 						TSN,\
 						U)
 		if layer_1_comm.rank == 0:
-			return [LS_models.ID, RMS]
+			return [LS_models.param_id, np.float64(RMS)]
 		else: 
-			return None
+			return ['none', 0]
 
 	errors_ind = SMM_objective()
 
 	# Gather parameters and corresponding errors from all ranks
 	# Only layer 1 rank 0 values are not None
-	comm.Barrier()
+	layer_1_comm.Barrier()
 	indexed_errors 	= world.gather(errors_ind, root=0)
-	indexed_errors  = [item for item in indexed_errors if item is not None]
+
 	parameter_list 	= world.gather(parameters, root=0)
-	parameter_list  = [item for item in parameter_list if item is not None]
 
 	# World master does selection of elite parameters and drawing new means 
 	if world.rank ==0:
+		indexed_errors  = np.copy(np.array([item for item in indexed_errors if item[0]!='none']))
+		for i in range(len(indexed_errors)):
+			indexed_errors[i,1] = float(indexed_errors[i,1])
+		parameter_list  = [item for item in parameter_list if item is not None]
+
 		parameter_list_dict = dict([(param['param_id'], param)\
-							 for param in parameter_list[1:]])
-		indexed_errors_arr = np.array(indexed_errors[1:])
+							 for param in parameter_list])
+		indexed_errors_arr = np.array(indexed_errors)
+		indexed_errors_arr[:,1] = indexed_errors_arr[:,1].astype(np.float64)
+		print(indexed_errors_arr)
 		indexed_errors_arr = indexed_errors_arr[np.argsort(\
-									-indexed_errors_arr[:,1])]
+									-indexed_errors_arr[:,1].astype(np.float64))]
+
 		
-		number_N = len(indexed_errors_arr)\
-					- np.sum(np.isnan(indexed_errors_arr[:,1]))
+		number_N = len(indexed_errors_arr)
 		
 		elite_errors_indexed = indexed_errors_arr[0: N_elite]
 
@@ -270,8 +288,10 @@ def iter_SMM(eggbasket_config,
 	else:
 		return None 
 
-def gen_param_moments(parameter_list_dict, param_random_bounds,\
-						 selected, weights):
+def gen_param_moments(parameter_list_dict,\
+					 	param_random_bounds,\
+						 selected,\
+						 weights):
 
 	""" Estiamate params of a sampling distribution
 
@@ -297,13 +317,13 @@ def gen_param_moments(parameter_list_dict, param_random_bounds,\
 		rand_params_i = []
 		for key in param_random_bounds.keys():
 			rand_params_i.append(\
-				parameter_list_dict[int(selected[i,0])][key])
+				float(parameter_list_dict[int(selected[i,0])][key]))
 		
 		sample_params.append(rand_params_i)
 
 	sample_params = np.array(sample_params)
 	means   = np.average(sample_params, weights = weights, axis=0)
-	cov     = np.cov(sample_params, aweights =weights, rowvar=0)
+	cov     = np.cov(sample_params, aweights = weights, rowvar=0)
 
 	return means, cov
 
@@ -346,7 +366,7 @@ if __name__ == "__main__":
 
 	# Estimation parameters  
 	tol = 1E-8
-	TSN = 250
+	TSN = 10
 	N_elite = 4
 	d = 3
 	start = time.time()

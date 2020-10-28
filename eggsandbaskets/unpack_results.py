@@ -14,7 +14,7 @@ from generate_timeseries.tseries_generator import gen_panel_ts, gen_moments, sor
 import numpy as np
 
 # Read settings
-with open("settings.yml", "r") as stream:
+with open("settings/settings.yml", "r") as stream:
     eggbasket_config = yaml.safe_load(stream)
 
 
@@ -32,15 +32,16 @@ world = MPI4py.COMM_WORLD
 #           open("/scratch/pv33/ls_model_temp/DB_lite.pols", "wb"))
 
 
-ID = 'testJUT4BB_20201025-150000_test'
+ID = 'ZE0SFT_20201028-171646'
+modname = 'test'
 
 numpy_vars_DC = {}
 numpy_vars_DB = {}
-os.chdir('/scratch/pv33/ls_model_temp/{}'.format(ID+'_acc_'+str(1)))
+os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(modname +'/'+ID+'_' +modname+'_acc_'+str(1)))
 for np_name in glob.glob('*np[yz]'):
     numpy_vars_DC[np_name] = dict(np.load(np_name, mmap_mode = 'r'))
 
-os.chdir('/scratch/pv33/ls_model_temp/{}'.format(ID+'_acc_'+str(0)))
+os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(modname +'/'+ID+'_' +modname+'_acc_'+str(1)))
 for np_name in glob.glob('*np[yz]'):
     numpy_vars_DB[np_name] = dict(np.load(np_name, mmap_mode = 'r'))
 
@@ -81,7 +82,7 @@ for Age in np.arange(int(og.parameters.tzero), int(og.parameters.R)):
         policy_prob_v.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_v'], numpy_vars_DC[str(int(Age))]['prob_v'])))
         policy_prob_pi.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_pi'], numpy_vars_DC[str(int(Age))]['prob_pi'])))
 
-        print("Loaded policies for DB age {} in {}".format(Age, time.time()-start))
+        #print("Loaded policies for DB age {} in {}".format(Age, time.time()-start))
 
         if Age== og.parameters.tzero:
             policy_VF = np.concatenate((numpy_vars_DB[str(int(Age))]['policy_VF'],numpy_vars_DC[str(int(Age))]['policy_VF']))

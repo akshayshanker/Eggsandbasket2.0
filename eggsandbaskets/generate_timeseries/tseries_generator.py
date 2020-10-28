@@ -124,7 +124,6 @@ def genprofiles_operator(og,
     grid_size_beta = int(og.parameters.grid_size_beta)
     grid_size_HS = og.parameters.grid_size_HS
 
-    #Shapes 
     # Preset shapes
     all_state_shape, all_state_shape_hat, v_func_shape,\
     all_state_A_last_shape, policy_shape_nadj,\
@@ -151,7 +150,6 @@ def genprofiles_operator(og,
         prob_V_vals[:] = eval_linear(X_cont_W,\
                                  prob_v_func,\
                                  points) 
-        #xi_V_vals = xi_V_vals - max(xi_V_vals)  
         prob_V_vals[np.isnan(prob_V_vals)] = 0
         prob_v = prob_V_vals/np.sum(prob_V_vals)
 
@@ -159,13 +157,9 @@ def genprofiles_operator(og,
         V_ind  = np.arange(len(V))\
                     [np.searchsorted(np.cumsum(prob_v), v_ushock)]
         v = V[V_ind]
-
-        # Pull out probabiltiy of risk share matrix for this cont state 
         prob_pi_func = policy_prob_pi[Age][account_ind,E_ind,alpha_ind,beta_ind,V_ind,:]
         prob_pi_vals = np.empty(len(Pi))
         prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points) 
-        #xi_Pi_vals[np.isnan(xi_Pi_vals)] = 0
-        #xi_Pi_vals = xi_Pi_vals - max(xi_Pi_vals)  
         prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
         Pi_ind  = np.arange(len(Pi))\
                     [np.searchsorted(np.cumsum(prob_Pi), pi_ushock)]
@@ -561,11 +555,11 @@ def genprofiles_operator(og,
 
         numpy_vars_DC = {}
         numpy_vars_DB = {}
-        os.chdir('/scratch/pv33/ls_model_temp/{}'.format(mod_name + '/'+ ID+'_acc_'+str(1)))
+        os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(mod_name +'/'+ID+ '_acc_'+str(1)))
         for np_name in glob.glob('*np[yz]'):
             numpy_vars_DC[np_name] = dict(np.load(np_name))
 
-        os.chdir('/scratch/pv33/ls_model_temp/{}'.format(mod_name + '/'+ ID+'_acc_'+str(0)))
+        os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(mod_name +'/'+ID+'_acc_'+str(0)))
         for np_name in glob.glob('*np[yz]'):
             numpy_vars_DB[np_name] = dict(np.load(np_name))
 
@@ -645,7 +639,7 @@ def genprofiles_operator(og,
                                          numpy_vars_DC[str(int(Age))]['prob_v'].reshape(prob_v_shape))))
                 policy_prob_pi.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_pi'].reshape(prob_pi_shape),\
                                          numpy_vars_DC[str(int(Age))]['prob_pi'].reshape(prob_pi_shape))))
-                print("Loaded policies for DB age {} in {}".format(Age, time.time()-start))
+                #print("Loaded policies for DB age {} in {}".format(Age, time.time()-start))
 
                 if Age== og.parameters.tzero:
                     policy_VF = np.concatenate((numpy_vars_DB[str(int(Age))]['policy_VF'].reshape(vf_shape),\
