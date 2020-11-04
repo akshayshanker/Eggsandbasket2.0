@@ -57,10 +57,12 @@ def retiree_func_factory(og):
     tau_housing                     = og.parameters.tau_housing    
     r,s, r_H                        = og.parameters.r, og.parameters.s, og.parameters.r_H     
     r_l, beta_m, kappa_m            = og.parameters.r_l, og.parameters.beta_m, og.parameters.kappa_m
+    l                               = og.parameters.l
     alpha_housing                   = og.st_grid.alpha_housing
 
     Q_shocks_r, Q_shocks_P          = og.st_grid.Q_shocks_r, og.st_grid.Q_shocks_P
     Q_DC_shocks, Q_DC_P             = og.cart_grids.Q_DC_shocks, og.cart_grids.Q_DC_P 
+    r_m_prime = og.cart_grids.r_m_prime
     X_QH_R                          = og.interp_grid.X_QH_R 
 
     H_R, HR_Q                       = og.grid1d.H_R, og.cart_grids.HR_Q             
@@ -75,7 +77,7 @@ def retiree_func_factory(og):
                                          og.parameters.H_min, og.parameters.A_max_R
     H_max                           = og.parameters.H_max
 
-    X_all_hat_ind                   = og.BigAssGrids.X_all_hat_ind_f()
+    X_all_hat_ind                   = og.BigAssGrids.X_all_hat_ind_f().astype(np.int32)
 
     X_cont_R,X_R_contgp,\
     X_H_R_ind,\
@@ -174,8 +176,8 @@ def retiree_func_factory(og):
             
             h_x         = np.take(H_c[~np.isnan(wealthbar_c)],\
                                      np.argsort(wealth_x))
-
-            #sprint(h_x)
+            #if i <6:
+                #print(h_x)
 
             wealth_x_sorted             = np.sort(np.copy(wealth_x))
             h_x[wealth_x_sorted<=A_min] = H_min
@@ -521,7 +523,7 @@ def retiree_func_factory(og):
             return m_prime 
 
         else:
-            return c - uc_inv(RHS,h, alpha_housing)
+            return uh(c,h,alpha_housing)  - RHS
 
     @njit
     def mort_FOC(m, x_prime,\
@@ -650,9 +652,6 @@ def retiree_func_factory(og):
                     a_prime_adj,\
                     c_prime_adj,\
                     h_prime_adj,\
-                    zeta_nl,\
-                    c_prime_adj_nl,\
-                    h_prime_adj_nl,\
                     h_prime_rent, \
                     UF_dbprime):
         
@@ -721,82 +720,75 @@ def retiree_func_factory(og):
         # array of t+1 house prices, mort. interest rates,
         # mortgage balnces after interest and net wealth 
 
-        Q_prime,r_m_prime      = q*(1+r_H + Q_DC_shocks[:,2]),\
-                                beta_m*r_l*(Q_DC_shocks[:,0]/r_l)**kappa_m
-                                            
-
-
-        M_prime                       = (1+r_m_prime)*m
-
+        Q_prime = q*(1+r_H + Q_DC_shocks[:,2])
+        M_prime= (1+r_m_prime)*m
         W_prime  = (1+r)*x_prime - amort_rate(t+1-2)*M_prime \
                                         + Q_prime*np.full(len(Q_prime),\
                                                     (1-delta_housing)*h)
+
+        W_prime[W_prime <= A_min] = A_min
         
         # t+1 states: A_t+1(1+r) - min mort payment payment, P_t+1, M_t+1 (1+r_m)
         # this is the state for the no  housing adjusters
 
-        state_prime_R                   =  np.column_stack(((x_prime*(1+r)\
+        state_prime_R =  np.column_stack(((x_prime*(1+r)\
                                             - amort_rate(t+1-2)*M_prime), \
                                             np.full(len(Q_prime),\
                                             (1-delta_housing)*h),\
                                             Q_prime, M_prime))
 
         state_prime_R[:,0][state_prime_R[:,0]<=0] = A_min
+        state_prime_R[:,0][np.isnan(state_prime_R[:,0])]= A_min
 
         # t+1 states: P_t+1, M_t+1 (1+r_m), net wealth - min mort payment
         # this is the state for the   housing adjusters
 
-        state_prime_RW          =  np.column_stack((Q_prime,M_prime,\
+        state_prime_RW =  np.column_stack((Q_prime,M_prime,\
                                                     W_prime))
 
         # t+1 states: t+1 states: P_t+1, M_t+1 (1+r_m),
         # net wealth - min mort payment - housing adjustment cost 
         # this is state for renters 
 
-        state_prime_rent        =  np.column_stack((Q_prime,W_prime \
+        state_prime_rent = np.column_stack((Q_prime,W_prime \
                                                 - M_prime*(1-amort_rate(t+1-2)\
                                                 - tau_housing*Q_prime*h)))
 
-        cannot_rent_1           = state_prime_rent[:,1]<0
+        cannot_rent_1 = state_prime_rent[:,1]<0
 
         #cannot_rent             = np.sum(cannot_rent_1)>0
 
-        state_prime_rent[:,1][state_prime_rent[:,1]<0]   = A_min
-
+        state_prime_rent[:,1][state_prime_rent[:,1]<A_min] = A_min
+        state_prime_rent[:,1][np.isnan(state_prime_rent[:,1])]= A_min
         # bequest value 
 
-        A_prime                 = max(x_prime*(1+r) \
-                                    + (1-delta_housing)*h*q -m,A_min)           # should there be a (1+r) here that goes into the bequest function?
+        A_prime = max(x_prime*(1+r) + (1-delta_housing)*h*q - m, A_min)           # should there be a (1+r) here that goes into the bequest function?
                                                                                 # the bequest function should have the *Next* period house price and 
-                                                                                # mortgage repayment rate 
+                                                                               # mortgage repayment rate 
         # STEP 2: evaluate multipliers 
         #      eta_ind> 1 if NOT adjusting housing stock (cond on not renting)
         #      zeta_ind>1 if NOT making liquid saving (cond on not adjusting)
 
         # evaluate array of next period eta adjustment multipliers 
 
-        eta_primes_vals         = eval_linear(X_cont_R, eta_prime_noadj,\
-                                     state_prime_R,xto.LINEAR)
+        eta_primes_vals = eval_linear(X_cont_R, eta_prime_noadj, state_prime_R)
 
         # evaluate where adjustment occurs 
         # adjustment occurs where someone
         # defaults on mort. payment
         # or has eta >1 
 
-        eta_ind1                = np.abs(eta_primes_vals)<=1 
-
-        nodefault               = state_prime_R[:,0]>=0  
-
-        eta_ind                 = (eta_ind1>=1)
-
+        eta_ind1 = np.abs(eta_primes_vals)<=1 
+        nodefault = state_prime_R[:,0]>=0  
+        eta_ind = (eta_ind1>=1)
         # evalute zetas 
 
-        zeta_prime_adj_vals_nl      = eval_linear(X_QH_R,\
-                                        zeta_nl,\
-                                        state_prime_RW,\
-                                        xto.LINEAR)
+        #zeta_prime_adj_vals_nl = eval_linear(X_QH_R,\
+        ##                                zeta_nl,\
+         #                               state_prime_RW,\
+         #                               xto.CONSTANT)
 
-        zeta_ind                    = zeta_prime_adj_vals_nl>1
+        #zeta_ind = zeta_prime_adj_vals_nl>1
 
 
         #zeta_ind = np.zeros(len(Q_DC_P))
@@ -804,66 +796,76 @@ def retiree_func_factory(og):
         # adjusters if liq. saving made
 
         c_prime_adj_vals, a_prime_adj_vals,\
-        h_prime_adj_vals             = eval_linear(X_QH_R,\
+        h_prime_adj_vals = eval_linear(X_QH_R,\
                                                 c_prime_adj,\
-                                                state_prime_RW,\
-                                                xto.LINEAR),\
+                                                state_prime_RW),\
                                      eval_linear(X_QH_R,\
                                                 a_prime_adj,\
-                                                state_prime_RW,\
-                                                xto.LINEAR), \
+                                                state_prime_RW,), \
                                      eval_linear(X_QH_R,\
                                                 h_prime_adj,\
-                                                state_prime_RW,\
-                                                xto.LINEAR)
+                                                state_prime_RW)
 
         c_prime_adj_vals[state_prime_RW[:,2]\
                                 <=0] =  C_min
 
-        c_prime_adj_vals[c_prime_adj_vals<C_min]  = C_min
+        c_prime_adj_vals[c_prime_adj_vals<=C_min] = C_min
+        c_prime_adj_vals[np.isnan(c_prime_adj_vals)]= C_min
 
-        h_prime_adj_vals[h_prime_adj_vals<H_min]  = H_min
+        h_prime_adj_vals[h_prime_adj_vals<=H_min] = H_min
+        h_prime_adj_vals[np.isnan(h_prime_adj_vals)] = H_min
 
-        h_prime_adj_vals[state_prime_RW[:,2]<=0]  = H_min
+        h_prime_adj_vals[state_prime_RW[:,2]<=0] = H_min
+        h_prime_adj_vals[np.isnan(state_prime_RW[:,2])] = H_min
 
         # STEP 4: calc cons and a_prime for 
         # non-adjusters 
         
         c_prime_noadj_vals,a_prime_noadj_vals  = eval_linear(X_cont_R,\
                                                         c_prime_noadj,\
-                                                        state_prime_R,\
-                                                        xto.LINEAR),\
+                                                        state_prime_R),\
                                                     eval_linear(X_cont_R,\
                                                         a_prime_noadj,\
-                                                        state_prime_R,\
-                                                        xto.LINEAR)
+                                                        state_prime_R)
 
-        c_prime_noadj_vals[c_prime_noadj_vals<C_min] = C_min
+        c_prime_noadj_vals[c_prime_noadj_vals<=C_min] = C_min
+        c_prime_noadj_vals[np.isnan(c_prime_noadj_vals)] = C_min
         c_prime_noadj_vals[state_prime_R[:,0]<=0]    = C_min
+        c_prime_noadj_vals[np.isnan(state_prime_R[:,0])]    = C_min
 
         
         h_prime_noadj_vals              = np.full(len(Q_prime),\
                                                 (1-delta_housing)*h)
         h_prime_noadj_vals[h_prime_noadj_vals<0] = H_min
+        h_prime_noadj_vals[np.isnan(h_prime_noadj_vals)] = H_min
 
         # STEP 5: calc cons and a_prime for 
         # adjusters wiht no liq saving 
 
-        h_prime_adj_vals_nl,c_prime_adj_vals_nl     = eval_linear(X_QH_R,\
-                                                        h_prime_adj_nl,\
-                                                        state_prime_RW,\
-                                                        xto.LINEAR),\
-                                                     eval_linear(X_QH_R,\
-                                                        c_prime_adj_nl,\
-                                                        state_prime_RW,\
-                                                        xto.LINEAR)
+        #h_prime_adj_vals_nl,c_prime_adj_vals_nl = eval_linear(X_QH_R,\
+        #                                                h_prime_adj_nl,\
+        #                                                state_prime_RW,\
+        #                                                xto.CONSTANT),\
+        #                                             eval_linear(X_QH_R,\
+        #                                                c_prime_adj_nl,\
+        #                                                state_prime_RW,\
+        #                                                xto.CONSTANT)
 
-        h_prime_adj_vals_nl[h_prime_adj_vals_nl<H_min] = H_min
-        c_prime_adj_vals_nl[c_prime_adj_vals_nl<C_min] = C_min
+#        h_prime_adj_vals_nl[h_prime_adj_vals_nl<H_min] = H_min
+#        c_prime_adj_vals_nl[c_prime_adj_vals_nl<C_min] = C_min
+#       h_prime_adj_vals_nl[np.isnan(h_prime_adj_vals_nl)] = H_min
+#       c_prime_adj_vals_nl[np.isnan(c_prime_adj_vals_nl)] = H_min
+
+        #h_prime_adj_vals_nl = h_prime_adj_vals
+        #c_prime_adj_vals_nl = c_prime_adj_vals
+        #mort_expay_adj_nl = mort_expay_noadj
 
 
         # STEP 6: calculate mortgage payment and flag extra payment
-
+        if alpha_housing<=0:
+            print(alpha_housing)
+        if alpha_housing>=1:
+            print(alpha_housing)
         mort_expay_noadj        = state_prime_R[:,0] - c_prime_noadj_vals\
                                                      - a_prime_noadj_vals
 
@@ -872,14 +874,12 @@ def retiree_func_factory(og):
                                                       - h_prime_adj_vals\
                                                         *Q_prime*(1+tau_housing)
 
-        mort_expay_adj_nl       = state_prime_RW[:,2] - c_prime_adj_vals_nl\
-                                                      - h_prime_adj_vals_nl\
-                                                        *Q_prime*(1+tau_housing)
+        #mort_expay_adj_nl       = state_prime_RW[:,2] - c_prime_adj_vals_nl\
+        #                                              - h_prime_adj_vals_nl\
+        #                                                *Q_prime*(1+tau_housing)
 
 
-        mort_ex_pay             = mort_expay_noadj*eta_ind\
-                                    + ((1-zeta_ind)*mort_expay_adj\
-                                    + zeta_ind*mort_expay_adj_nl)*(1-eta_ind)
+        mort_ex_pay = mort_expay_noadj*eta_ind + (mort_expay_adj)*(1-eta_ind)
         
         # STEP 7: create vec of t+2 mortgage balances (before t+2 interest )
 
@@ -890,20 +890,17 @@ def retiree_func_factory(og):
         extra_pay_norent               = mort_ex_pay>1e-5
 
         # STEP 8: combine all non-renting policies 
-        c_prime_val_norent                     = ((1-zeta_ind)*c_prime_adj_vals\
-                                            + zeta_ind*c_prime_adj_vals_nl)\
-                                            *(1-eta_ind)\
-                                            + c_prime_noadj_vals*eta_ind
+        c_prime_val_norent = c_prime_adj_vals*(1-eta_ind) + c_prime_noadj_vals*eta_ind
 
-        c_prime_val_norent[c_prime_val_norent <C_min]  = C_min
+        c_prime_val_norent[c_prime_val_norent<=C_min]  = C_min
+        c_prime_val_norent[np.isnan(c_prime_val_norent)]= C_min
 
-        h_prime_val_norent                      = ((1-zeta_ind)*h_prime_adj_vals \
-                                                    + zeta_ind*h_prime_adj_vals_nl)*(1-eta_ind)\
-                                                    + h_prime_noadj_vals*eta_ind  
+        h_prime_val_norent = h_prime_adj_vals*(1-eta_ind) + h_prime_noadj_vals*eta_ind  
 
-        h_prime_val_norent[h_prime_val_norent <H_min]  = H_min
+        h_prime_val_norent[h_prime_val_norent<=H_min]  = H_min
+        h_prime_val_norent[np.isnan(h_prime_val_norent)]  = H_min
 
-        a_prime_val_norent                     = (1-zeta_ind)*a_prime_adj_vals*(1-eta_ind)\
+        a_prime_val_norent = a_prime_adj_vals*(1-eta_ind)\
                                             + a_prime_noadj_vals*eta_ind  
 
         a_prime_val_norent[a_prime_val_norent<=A_min] = A_min
@@ -913,7 +910,7 @@ def retiree_func_factory(og):
                                                       Q_prime, mort_dp_prime))
 
         UF_dp_val_norent            = beta_bar*eval_linear(X_cont_R, UF_dbprime,\
-                                                     state_dp_prime_norent )
+                                                     state_dp_prime_norent)
 
         #   t+1 marginal utility of consumption for non-retning 
 
@@ -922,16 +919,20 @@ def retiree_func_factory(og):
         # STEP 9: combine all  renter policies 
 
         h_prime_rent_val        = eval_linear(W_Q_R,h_prime_rent,\
-                                                state_prime_rent, xto.LINEAR)
+                                                state_prime_rent)
 
         c_prime_rent_val        = phi_r*Q_prime*h_prime_rent_val\
                                         *(1-alpha_housing)/alpha_housing
 
-        c_prime_rent_val[c_prime_rent_val<=C_min] = C_min
-        h_prime_rent_val[h_prime_rent_val<=H_min] = H_min
+        c_prime_rent_val[c_prime_rent_val <= C_min] = C_min
+        c_prime_rent_val[np.isnan(c_prime_rent_val)] = C_min
+        h_prime_rent_val[h_prime_rent_val <= H_min] = H_min
+        h_prime_rent_val[np.isnan(h_prime_rent_val)] = H_min
 
         a_prime_rent_val        = state_prime_rent[:,1] - c_prime_rent_val\
                                      - h_prime_rent_val*phi_r*Q_prime
+
+        a_prime_rent_val[a_prime_rent_val<=A_min] = A_min
 
         state_dp_prime_rent     = np.column_stack((a_prime_rent_val,\
                                         np.full(len(a_prime_rent_val), H_min),\
@@ -983,7 +984,10 @@ def retiree_func_factory(og):
                                                     *b_prime(A_prime)
 
         UC_prime_M              = np.dot(UC_prime_M_inner,Q_DC_P)
-
+        c_prime_val[c_prime_val<=0] = C_min
+        c_prime_val[np.isnan(c_prime_val)] = C_min
+        h_prime_val[h_prime_val<=0] = H_min
+        h_prime_val[np.isnan(h_prime_val)] = H_min
         UF_inner                = u(c_prime_val,\
                                         h_prime_val, alpha_housing) 
 
@@ -1020,9 +1024,7 @@ def retiree_func_factory(og):
             # pull out state values for i 
             x_prime,h,q     = X_RC_contgp[i][0],X_RC_contgp[i][1],\
                                 X_RC_contgp[i][2]
-            
             m_mort_args     = (x_prime, h, q,t_prime_funcs, t)
-
             m_prime_m       = M[-1]
 
             # get RHS of Euler equation when max. mortgage taken 
@@ -1038,19 +1040,21 @@ def retiree_func_factory(og):
             UC_prime_M_RHSf, UFf\
                             = gen_UC_RHS(t,x_prime,h,q,0,\
                                  *t_prime_funcs)
-
+            if mort_FOC(0, *m_mort_args)\
+                *mort_FOC( M[-1], *m_mort_args)<0:
+                m_prime_func[i] = brentq(mort_FOC, 0,M[-1],\
+                                            args= m_mort_args)[0]
             # check if m_t+1 is constrained by max mortgage
-            if UC_prime_RHSm>= UC_prime_M_RHSm:
-                m_prime_func[i]         = m_prime_m
+            elif UC_prime_RHSm> UC_prime_M_RHSm:
+                m_prime_func[i] = m_prime_m
 
             # check if m_t+1 is constrained by min mortgage
-            elif UC_prime_RHSf<=UC_prime_M_RHSf:
-                m_prime_func[i]         = 0 
+            elif UC_prime_RHSf< UC_prime_M_RHSf:
+                m_prime_func[i] = 0 
 
             # otherwise, solve for interior unconstrained mortgage
             else:
-                m_prime_func[i]         = brentq(mort_FOC, 0,M[-1],\
-                                             args= m_mort_args)[0]
+                 m_prime_func[i] = 0 
 
         # reshape to wide and return function 
         return m_prime_func.reshape(grid_size_A,grid_size_H,grid_size_Q)
@@ -1322,17 +1326,14 @@ def retiree_func_factory(og):
                                                    x_cont_vals[1],x_cont_vals[2],x_cont_vals[3],\
                                                     *t_prime_funcs)
 
-            uf_prime_1[i]           = UF
+            uf_prime_1[i]           = max(1e-250,UF)
         return uf_prime_1.reshape((grid_size_A, grid_size_H, grid_size_Q, grid_size_M))
 
     @njit
     def gen_rhs_val_adj(t,points,
                         a_prime_adj,\
                         c_prime_adj,\
-                        h_prime_adj,\
-                        zeta_nl_adj,\
-                        c_prime_adj_nl,\
-                        h_prime_adj_nl):
+                        h_prime_adj):
 
         """ Retrun value of interpolated  policy
             functions for housing adjuster at
@@ -1340,13 +1341,6 @@ def retiree_func_factory(og):
 
 
         # liquid saving multiplier (zeta>1 no liq. saving.)
-
-        zeta_nl_val             = eval_linear(X_QH_R,\
-                                    zeta_nl_adj,\
-                                    points,\
-                                    xto.LINEAR)
-
-        zeta_ind                = zeta_nl_val>1
 
         # policies with liquid saving 
 
@@ -1385,47 +1379,14 @@ def retiree_func_factory(og):
         mort_dp_prime[mort_dp_prime<=0] = 0
 
 
-        # policies without liquid saving 
-
-        H_prime_adj_nl_val      = eval_linear(X_QH_R,h_prime_adj_nl,\
-                                                points,\
-                                                xto.LINEAR)
-
-        H_prime_adj_nl_val[H_prime_adj_val<0] = H_min
-
-        c_prime_adj_nl_val      = eval_linear(X_QH_R,\
-                                                c_prime_adj_nl,\
-                                                points, xto.LINEAR)
-
-        c_prime_adj_nl_val[c_prime_adj_val<C_min] = C_min
-
-        extra_pay_val_nl        = points[:,2] - c_prime_adj_nl_val\
-                                              - H_prime_adj_nl_val\
-                                                *(1+tau_housing)\
-                                                *points[:,1]
-
-        extra_pay_adj_nl_ind    = extra_pay_val_nl >1e-05
-
-        mort_dp_prime_nl        = points[:,1]*(1-amort_rate(t-2))\
-                                             - extra_pay_val_nl
-
-        mort_dp_prime_nl[mort_dp_prime_nl<0] = 0
 
         # combine pols for non-renter          
 
-        H_prime_val             = (1-zeta_ind)*H_prime_adj_val \
-                                    + zeta_ind*H_prime_adj_nl_val
-
-        c_prime_val             = (1-zeta_ind)*c_prime_adj_val\
-                                    + zeta_ind*c_prime_adj_nl_val
-
-        a_prime_val             = (1-zeta_ind)*a_prime_adj_val
-
-        extra_pay_ind           = (1-zeta_ind)*extra_pay_adj_ind\
-                                    + zeta_ind*extra_pay_adj_nl_ind 
-
-        mort_dp_prime           = (1-zeta_ind)*mort_dp_prime\
-                                    + zeta_ind*mort_dp_prime_nl 
+        H_prime_val             = H_prime_adj_val
+        c_prime_val             = c_prime_adj_val
+        a_prime_val             = a_prime_adj_val
+        extra_pay_ind           = extra_pay_adj_ind
+        mort_dp_prime           = mort_dp_prime
 
         return c_prime_val,H_prime_val, a_prime_val,\
                     mort_dp_prime, extra_pay_ind
@@ -1504,9 +1465,6 @@ def retiree_func_factory(og):
                     a_prime_adj,\
                     c_prime_adj,\
                     h_prime_adj,\
-                    zeta_nl,\
-                    c_prime_adj_nl,\
-                    h_prime_adj_nl,\
                     h_prime_rent,\
                     UF_dbprime):
 
@@ -1614,11 +1572,8 @@ def retiree_func_factory(og):
 
                 Q_prime             = q_in*(1+r_H + Q_DC_shocks[:,2])
 
-                A_DC_prime          = (1+(1-r_share)*Q_DC_shocks[:,0]\
+                A_DC_prime          = ((1-r_share)*Q_DC_shocks[:,0]\
                                         + r_share*Q_DC_shocks[:,1] )*ADC_in
-
-                r_m_prime           = beta_m*r_l\
-                                        *(Q_DC_shocks[:,0]/r_l)**kappa_m
 
                 M_prime             = (1+r_m_prime)*m_in  
 
@@ -1670,10 +1625,7 @@ def retiree_func_factory(og):
                                         gen_rhs_val_adj(t,points_adj,
                                                     a_prime_adj,\
                                                     c_prime_adj,\
-                                                    h_prime_adj,\
-                                                    zeta_nl,\
-                                                    c_prime_adj_nl,\
-                                                    h_prime_adj_nl)
+                                                    h_prime_adj)
                     
                     c_prime_val_rent,h_prime_val_rent  = \
                                         gen_rhs_val_rent(t,points_rent,
@@ -1776,7 +1728,7 @@ def retiree_func_factory(og):
                                             *(s[int(R-1)]*uc_prime*((exrtra_pay_ind))\
                                             + (1-s[int(R-1)])*b_prime(A_prime))
 
-                    Lambda         =    (1+(1-r_share)*Q_DC_shocks[:,0]\
+                    Lambda         =    ((1-r_share)*Q_DC_shocks[:,0]\
                                             + r_share*Q_DC_shocks[:,1])*\
                                             (UC_prime/(1+r))
 
@@ -1819,9 +1771,6 @@ def retiree_func_factory(og):
                             np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
                             np.ones((grid_size_Q,grid_size_M,grid_size_A)),\
                             np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
-                            np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
-                            np.ones((grid_size_Q,grid_size_M,grid_size_A)),\
-                            np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
                             np.ones((grid_size_A, grid_size_Q)),\
                             np.zeros((grid_size_A,grid_size_H,grid_size_Q,grid_size_M)))
 
@@ -1830,9 +1779,6 @@ def retiree_func_factory(og):
         t_prime_funcs   = (np.ones((grid_size_A,grid_size_H,grid_size_Q,grid_size_M)),\
                             np.ones((grid_size_A,grid_size_H,grid_size_Q,grid_size_M)),\
                             np.ones((grid_size_A,grid_size_H,grid_size_Q,grid_size_M)),\
-                            np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
-                            np.ones((grid_size_Q,grid_size_M,grid_size_A)),\
-                            np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
                             np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
                             np.ones((grid_size_Q,grid_size_M,grid_size_A)),\
                             np.ones((grid_size_Q,grid_size_M, grid_size_A)),\
@@ -1854,14 +1800,14 @@ def retiree_func_factory(og):
             #start = time.time()
             a_adj_uniform, c_adj_uniform,H_adj_uniform = eval_policy_R_adj(t,m_prime_func, t_prime_funcs) 
 
-            zeta_nl, c_adj_uniform_nl,H_adj_uniform_nl = eval_policy_R_adj_nl(t,m_prime_func, t_prime_funcs) 
+            #zeta_nl, c_adj_uniform_nl,H_adj_uniform_nl = eval_policy_R_adj_nl(t,m_prime_func, t_prime_funcs) 
             #print(time.time() - start)
 
-            UF_dbprime= gen_uf_prime(t, t_prime_funcs)
+            UF_dbprime = gen_uf_prime(t, t_prime_funcs)
             #print(UF_dbprime)
             t_prime_funcs =\
             (a_noadj, c_noadj, etas_noadj, a_adj_uniform, c_adj_uniform,\
-             H_adj_uniform, zeta_nl, c_adj_uniform_nl,H_adj_uniform_nl, h_prime_rent, UF_dbprime)
+             H_adj_uniform, h_prime_rent, UF_dbprime)
 
         UC_prime_out, UC_prime_H_out, UC_prime_HFC_out,UC_prime_M_out,Lambda,VF = gen_RHS_TR(t, *t_prime_funcs)
         #print(time.time() - start)
@@ -1970,7 +1916,7 @@ if __name__ == "__main__":
 
 
     a_noadj, c_noadj, etas_noadj, a_adj_uniform, c_adj_uniform,\
-    H_adj_uniform,zeta_nl, c_adj_uniform_nl,H_adj_uniform_nl, h_prime_rent,UC_prime_out, UC_prime_H_out,\
+    H_adj_uniform, h_prime_rent,UC_prime_out, UC_prime_H_out,\
     UC_prime_HFC_out,UC_prime_M_out, Lambda,VF= gen_R_pol()      
 
 

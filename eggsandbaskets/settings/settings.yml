@@ -53,7 +53,7 @@ baseline_lite:
     h: 'Scaling factor for high risk pension asset'
     k: Bequest curvature
     kappa_m: scaling factor for mortgage rate
-    l: 'Scaling factor for high risk pension asset '
+    l: 'Scaling factor for low risk pension asset '
     nu_p_0: 'Adj. cost parameter for pension plan'
     nu_p_1: 'Adj. cost parameter for pension plan'
     nu_p_2: 'Adj. cost parameter for pension plan'
@@ -96,15 +96,15 @@ baseline_lite:
     A_max_R: 30.0
     A_max_W: 20.0
     A_max_WE: 50.0
-    A_max_WW: 40.0
+    A_max_WW: 30.0
     A_min: 1.0e-5
     A_min_W: 1.0e-05
     C_max: 7.0
     C_min: 1.0e-10
     DC_max: 20.0
     DC_min: .1
-    H_max: 20.0
-    HS_max: 20.0
+    H_max: 20
+    HS_max: 20
     H_min: 1.0e-5
     ID: 188198904234
     M_max: 8.0
@@ -116,7 +116,8 @@ baseline_lite:
     alpha: 1.0
     alpha_bar: 0.7
     beta_bar: 0.96
-    beta_m: 3.0
+    beta_m: 1
+    r_m: .0614
     def_pi: 0.7
     delta_housing: 0.01
     f_ACF: 0.8625
@@ -128,7 +129,7 @@ baseline_lite:
     grid_size_DC: 6.0
     grid_size_DCR: 2.0
     grid_size_H: 15
-    grid_size_HS: 60
+    grid_size_HS: 100
     grid_size_M: 15.0
     grid_size_Q: 6.0
     grid_size_Q_s: 2.0
@@ -137,7 +138,7 @@ baseline_lite:
     grid_size_beta: 2.0
     h: 1.68
     k: 2.64169
-    kappa_m: 6.0
+    kappa_m: 0
     l: 0.54
     nu_p_0: -1.876
     nu_p_1: -0.112

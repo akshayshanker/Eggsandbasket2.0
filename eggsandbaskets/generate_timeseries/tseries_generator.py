@@ -13,6 +13,8 @@ Functions: genprofiles
 
 import numpy as np
 from quantecon import tauchen
+from psutil import virtual_memory
+
 import matplotlib.pyplot as plt
 from itertools import product
 from interpolation.splines import UCGrid, CGrid, nodes, eval_linear
@@ -127,7 +129,7 @@ def genprofiles_operator(og,
     # Preset shapes
     all_state_shape, all_state_shape_hat, v_func_shape,\
     all_state_A_last_shape, policy_shape_nadj,\
-    policy_shape_adj = gen_policyout_arrays(og)
+    policy_shape_adj, policy_shape_rent, prob_v_shape, prob_pi_shape = gen_policyout_arrays(og)
 
     @njit 
     def gen_VPi(points,\
@@ -480,17 +482,6 @@ def genprofiles_operator(og,
         TSALL_14 = np.zeros((int((int(R)-int(tzero))*N*2),21))
         wave_length = 4
 
-        policies = (policy_c_noadj,\
-                    etas_noadj,\
-                    policy_a_noadj,\
-                    policy_c_adj,\
-                    policy_h_adj,\
-                    policy_a_adj,\
-                    policy_h_rent,\
-                    policy_zeta,\
-                    policy_prob_v,\
-                    policy_prob_pi,\
-                    policy_VF)
         #print(policy_Xi_copi.shape)
         k=int(0)
         for age in np.arange(int(tzero), int(R)):
@@ -509,7 +500,17 @@ def genprofiles_operator(og,
                                       V_ushock_ts,
                                       Pi_ushock_ts,
                                       DBshock, 
-                                      *policies)
+                                      policy_c_noadj,
+                                        etas_noadj,
+                                        policy_a_noadj,
+                                        policy_c_adj,
+                                        policy_h_adj,
+                                        policy_a_adj,
+                                        policy_h_rent,
+                                        policy_zeta,
+                                        policy_prob_v,
+                                        policy_prob_pi,
+                                        policy_VF)
 
                 TSALL_10[int(k),:] = w10
                 TSALL_14[int(k),:] = w14
@@ -530,7 +531,17 @@ def genprofiles_operator(og,
                                      V_ushock_ts,
                                      Pi_ushock_ts,
                                      DBshock,
-                                     *policies)
+                                        policy_c_noadj,
+                                        etas_noadj,
+                                        policy_a_noadj,
+                                        policy_c_adj,
+                                        policy_h_adj,
+                                        policy_a_adj,
+                                        policy_h_rent,
+                                        policy_zeta,
+                                        policy_prob_v,
+                                        policy_prob_pi,
+                                        policy_VF)
                 TSALL_10[int(k),:] = w10
                 TSALL_14[int(k),:] = w14
                 k +=1
@@ -552,16 +563,20 @@ def genprofiles_operator(og,
         Todo
         ----
         - Use loops to perform the unpacking below"""
-
+        #print("Loading arrays in ts generator")
+        tzero = og.parameters.tzero
+        R = og.parameters.R
         numpy_vars_DC = {}
         numpy_vars_DB = {}
         os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(mod_name +'/'+ID+ '_acc_'+str(1)))
         for np_name in glob.glob('*np[yz]'):
-            numpy_vars_DC[np_name] = dict(np.load(np_name))
+            numpy_vars_DC[np_name] = dict(np.load(np_name), memmap = 'r')
+            #print("Laoded mmap {}".format(np_name))
 
         os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(mod_name +'/'+ID+'_acc_'+str(0)))
         for np_name in glob.glob('*np[yz]'):
-            numpy_vars_DB[np_name] = dict(np.load(np_name))
+            numpy_vars_DB[np_name] = dict(np.load(np_name),memmap = 'r')
+            #print("Laoded mmap {}".format(np_name))
 
         var_keys = copy.copy(list(numpy_vars_DB.keys()))
         for keys in var_keys:
@@ -584,38 +599,6 @@ def genprofiles_operator(og,
         tzero = og.parameters.tzero
         R = og.parameters.R
         
-        vf_shape = ((len(DB),
-                    grid_size_W,
-                    grid_size_alpha,
-                    grid_size_beta,
-                    len(Pi),
-                    grid_size_A,
-                    grid_size_DC,
-                    grid_size_H,
-                    grid_size_Q,
-                    grid_size_M))
-
-        prob_v_shape = (int(len(DB)), grid_size_W,
-                                    grid_size_alpha,
-                                    grid_size_beta,
-                                    grid_size_A,
-                                    grid_size_DC,
-                                    grid_size_H,
-                                    grid_size_Q,
-                                    grid_size_M,
-                                    len(V))
-
-        prob_pi_shape = (int(len(DB)), grid_size_W,
-                                      grid_size_alpha,
-                                      grid_size_beta,
-                                      len(V),
-                                      grid_size_A,
-                                      grid_size_DC,
-                                      grid_size_H,
-                                      grid_size_Q,
-                                      grid_size_M,
-                                      len(Pi))
-        
         for Age in np.arange(int(og.parameters.tzero), int(og.parameters.R)):
 
                 start = time.time()
@@ -627,23 +610,25 @@ def genprofiles_operator(og,
                                          numpy_vars_DC[str(int(Age))]['Aprime_adj'])))
                 policy_c_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['C_noadj'],\
                                          numpy_vars_DC[str(int(Age))]['C_noadj'])))
-                etas_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['etas_noadj'],\
-                                         numpy_vars_DC[str(int(Age))]['etas_noadj'])))
+                etas_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['etas_noadj'].astype(np.float32),\
+                                         numpy_vars_DC[str(int(Age))]['etas_noadj'].astype(np.float32))))
                 policy_a_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['Aprime_noadj'],\
                                          numpy_vars_DC[str(int(Age))]['Aprime_noadj'])))
-                policy_zeta.append(np.concatenate((numpy_vars_DB[str(int(Age))]['zeta'].reshape(all_state_shape_hat),\
-                                         numpy_vars_DC[str(int(Age))]['zeta'].reshape(all_state_shape_hat))))
+                policy_zeta.append(np.concatenate((numpy_vars_DB[str(int(Age))]['zeta'].astype(np.float32).reshape(all_state_shape_hat),\
+                                         numpy_vars_DC[str(int(Age))]['zeta'].astype(np.float32).reshape(all_state_shape_hat))))
                 policy_h_rent.append(np.concatenate((numpy_vars_DB[str(int(Age))]['H_rent'],\
                                          numpy_vars_DC[str(int(Age))]['H_rent'])))
-                policy_prob_v.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_v'].reshape(prob_v_shape),\
-                                         numpy_vars_DC[str(int(Age))]['prob_v'].reshape(prob_v_shape))))
-                policy_prob_pi.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_pi'].reshape(prob_pi_shape),\
-                                         numpy_vars_DC[str(int(Age))]['prob_pi'].reshape(prob_pi_shape))))
+                policy_prob_v.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_v'],\
+                                         numpy_vars_DC[str(int(Age))]['prob_v'])))
+                policy_prob_pi.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_pi'],\
+                                         numpy_vars_DC[str(int(Age))]['prob_pi'])))
                 #print("Loaded policies for DB age {} in {}".format(Age, time.time()-start))
+                #mem = virtual_memory()
+                #print(mem.available / mem.total)
 
                 if Age== og.parameters.tzero:
-                    policy_VF = np.concatenate((numpy_vars_DB[str(int(Age))]['policy_VF'].reshape(vf_shape),\
-                                        numpy_vars_DC[str(int(Age))]['policy_VF'].reshape(vf_shape)))
+                    policy_VF = np.concatenate((numpy_vars_DB[str(int(Age))]['policy_VF'],\
+                                        numpy_vars_DC[str(int(Age))]['policy_VF']))
                 del numpy_vars_DB[str(int(Age))]
                 del numpy_vars_DC[str(int(Age))]
                 gc.collect()
@@ -698,10 +683,10 @@ def genprofiles_operator(og,
         
         return TSALL_10_df, TSALL_14_df
 
-    return generate_TSDF
+    return generate_TSDF, load_pol_array
 
 def gen_panel_ts(og, U,N):
-    generate_TSDF = genprofiles_operator(og)
+    generate_TSDF,load_pol_array = genprofiles_operator(og)
     TSALL_10_df, TSALL_14_df = generate_TSDF(U,N,og.ID, og.mod_name)
 
     return TSALL_10_df, TSALL_14_df

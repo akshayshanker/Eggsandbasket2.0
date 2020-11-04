@@ -89,66 +89,40 @@ def gen_policyout_arrays(og):
                             grid_size_M,\
                             grid_size_A)
 
-    policy_Aprime_noadj, policy_C_noadj, policy_etas_noadj=\
-                            np.zeros(policy_shape_nadj),\
-                            np.zeros(policy_shape_nadj),\
-                            np.zeros(policy_shape_nadj)
-
-    policy_zeta = np.zeros((int(R)-int(tzero), len(DB), grid_size_W, grid_size_alpha,\
-                            grid_size_beta, len(Pi),len(V),\
-                            grid_size_A,grid_size_DC,\
-                            grid_size_H, grid_size_Q,\
-                            grid_size_M))
-
-    policy_Aprime_adj, policy_C_adj, policy_H_adj = \
-                            np.zeros(policy_shape_adj),\
-                            np.zeros(policy_shape_adj),\
-                            np.zeros(policy_shape_adj)
-
-    policy_Xi_cov, policy_Xi_copi = \
-                        np.zeros((int(R)-int(tzero),int(len(DB)),grid_size_W,\
-                            grid_size_alpha,\
-                            grid_size_beta,\
-                            grid_size_A,\
-                            grid_size_DC,\
-                            grid_size_H,\
-                            grid_size_Q,\
-                            grid_size_M,\
-                            len(V))),\
-                        np.zeros((int(R)-int(tzero),int(len(DB)),grid_size_W,\
-                            grid_size_alpha,\
-                            grid_size_beta,\
-                            len(V),\
-                            grid_size_A,\
-                            grid_size_DC,\
-                            grid_size_H,\
-                            grid_size_Q,\
-                            grid_size_M,\
-                            len(Pi)))
-
-    policy_VF =   np.zeros((len(DB), grid_size_W, grid_size_alpha,\
-                                    grid_size_beta,len(Pi),
-                                    grid_size_A,\
-                                    grid_size_DC,grid_size_H,\
-                                    grid_size_Q,grid_size_M))
-    
-    policy_H_rent = np.zeros((int(R)-int(tzero),len(DB),
-                     grid_size_W,
-                     grid_size_alpha,
-                     grid_size_beta,
-                     len(Pi),
-                     grid_size_A,
-                     grid_size_DC,
-                     grid_size_Q,
-                     ))
+    policy_shape_rent = (int(R)-int(tzero),len(DB),
+                                grid_size_W,
+                                grid_size_alpha,
+                                grid_size_beta,
+                                len(Pi),
+                                grid_size_A,
+                                grid_size_DC,
+                                grid_size_Q,
+                                )
 
 
+    prob_v_shape = (int(len(DB)), grid_size_W,
+                        grid_size_alpha,
+                        grid_size_beta,
+                        grid_size_A,
+                        grid_size_DC,
+                        grid_size_H,
+                        grid_size_Q,
+                        grid_size_M,
+                        len(V))
+
+    prob_pi_shape = (int(len(DB)), grid_size_W,
+                          grid_size_alpha,
+                          grid_size_beta,
+                          len(V),
+                          grid_size_A,
+                          grid_size_DC,
+                          grid_size_H,
+                          grid_size_Q,
+                          grid_size_M,
+                          len(Pi))
     return all_state_shape,all_state_shape_hat, v_func_shape,\
             all_state_A_last_shape, policy_shape_nadj, policy_shape_adj,\
-            #policy_Aprime_noadj, policy_C_noadj, policy_etas_noadj,\
-            #policy_Aprime_adj, policy_C_adj, policy_H_adj,\
-            #policy_Xi_cov, policy_Xi_copi, policy_VF,\
-            #policy_zeta, policy_H_rent
+            policy_shape_rent, prob_v_shape, prob_pi_shape
 
 @njit
 def sim_markov(P, P_stat, U):
@@ -187,7 +161,7 @@ def d0(v1,v2):
     return out
 
 @njit
-def interp_as(xp,yp,x, extrap= False):
+def interp_as(xp,yp,x, extrap = True):
 
     """Function  interpolates 1D
     with linear extraplolation 
@@ -209,7 +183,7 @@ def interp_as(xp,yp,x, extrap= False):
     """
 
     evals = np.zeros(len(x))
-    if extrap == True:
+    if extrap == True and len(xp)>1:
         for i in range(len(x)):
             if x[i]< xp[0]:
                 if (xp[1]-xp[0])!=0:
@@ -274,7 +248,8 @@ def gen_reshape_funcs(og):
     EBA_P2                                       = og.cart_grids.EBA_P2
 
     all_state_shape,all_state_shape_hat, v_func_shape,\
-    all_state_A_last_shape, policy_shape_nadj, policy_shape_adj = gen_policyout_arrays(og)  
+    all_state_A_last_shape, policy_shape_nadj, policy_shape_adj, policy_shape_rent,\
+    prob_v_shape, prob_pi_shape = gen_policyout_arrays(og)  
     #policy_Aprime_noadj, policy_C_noadj, policy_etas_noadj,\
     #policy_Aprime_adj, policy_C_adj, policy_H_adj,\
     #policy_Xi_cov, policy_Xi_copi, policy_VF,policy_zeta, policy_H_rent\

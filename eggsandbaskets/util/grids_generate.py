@@ -51,10 +51,11 @@ def generate_points(og, path, scratch = True):
     yvec                = og.functions.yvec
     E                   = og.st_grid.E
     r                   = og.parameters.r
-
+    
 
     r_H                 = og.parameters.r_H
     r_l                 = og.parameters.r_l
+    l                   = og.parameters.l
     beta_m              = og.parameters.beta_m
     kappa_m             = og.parameters.kappa_m
 
@@ -67,6 +68,7 @@ def generate_points(og, path, scratch = True):
 
     X_all_ind           = og.BigAssGrids.X_all_ind_f()
     Q_DC_shocks         = og.cart_grids.Q_DC_shocks
+    r_m_prime = og.cart_grids.r_m_prime
     X_all_hat_ind       = og.BigAssGrids.X_all_hat_ind_f()
 
 
@@ -165,26 +167,24 @@ def generate_points(og, path, scratch = True):
 
         q_t_arr             = np.full(len(Q_DC_shocks[:,2]),q_in)
         r_H_arr             = np.full(len(Q_DC_shocks[:,2]),r_H)
-        Q_prime             = 1+r_H_arr + Q_DC_shocks[:,2]
+        Q_prime = (1+r_H_arr + Q_DC_shocks[:,2])*q_t_arr
 
         risky_share_arr     = np.full(len(Q_DC_shocks[:,2]),r_share)
 
-        A_DC_returns        = 1+(1-risky_share_arr)*Q_DC_shocks[:,0] +\
+        A_DC_returns = (1-risky_share_arr)*Q_DC_shocks[:,0] +\
                                 risky_share_arr*Q_DC_shocks[:,1]
 
-        A_DC_prime          = A_DC_returns*\
+        A_DC_prime  = A_DC_returns*\
                                 np.full(len(Q_DC_shocks[:,2]),ADC_in)
+        M_prime = (1+r_m_prime)*m_in 
 
-        r_m_prime           = beta_m*r_l*(Q_DC_shocks[:,0]/r_l)**kappa_m 
-        M_prime             = (1+r_m_prime)*m_in 
-
-        return np.column_stack((A_DC_prime,Q_prime,M_prime,r_m_prime))
+        return np.column_stack((A_DC_prime,Q_prime,M_prime))
 
     @njit
     def gen_x_prime_array():
 
-        X_prime_vals            = np.empty((len(X_all_hat_ind),\
-                                    len(Q_DC_shocks[:,2]), 4))
+        X_prime_vals = np.empty((len(X_all_hat_ind),\
+                                    len(Q_DC_shocks[:,2]), 3))
 
         for i in prange(len(X_all_hat_ind)):
             X_prime_vals[i,:]       = gen_x_prime_vals(i)
@@ -193,10 +193,8 @@ def generate_points(og, path, scratch = True):
 
     @njit
     def gen_alph_beta(i):
-        alpha_hs = np.exp(alpha_hat[X_all_ind[i][2]]\
-                            + np.log(alpha_bar))
-        beta = np.exp(beta_hat[X_all_ind[i][3]]\
-                            + np.log(beta_bar))
+        alpha_hs = alpha_hat[X_all_ind[i][2]]
+        beta = beta_hat[X_all_ind[i][3]]
 
         return np.array([alpha_hs, beta])
 
@@ -248,7 +246,7 @@ def generate_points(og, path, scratch = True):
         A_prime:            flat 9D array
 
         """
-        wage_vector                    = gen_wage_vec()
+        wage_vector = gen_wage_vec()
 
         points_noadj_vec, points_adj_vec, points_rent_vec\
                     = np.empty((int(R-tzero), len(X_all_ind[:,1]),2)),\
@@ -338,7 +336,7 @@ def generate_points(og, path, scratch = True):
         # reshape the adjustment points to wide
         # recall the points adj_vec are ordered accordint to
         # X_all_ind  
-        points_adj_vec1         = points_adj_vec.reshape((int(R-tzero),\
+        points_adj_vec1 = points_adj_vec.reshape((int(R-tzero),\
                                                         1,grid_size_W,\
                                                         grid_size_alpha,\
                                                         grid_size_beta,\
@@ -432,22 +430,19 @@ def generate_points(og, path, scratch = True):
 
     points_noadj_vec, points_adj_vec, points_rent_vec, A_prime = gen_RHS_points()
 
-
     if scratch ==True:
 
         for Age in np.arange(int(tzero), int(R))[::-1]:
-            np.savez_compressed(path+"/grigrid_modname_{}_age_{}".format(og.mod_name, Age),\
+            np.savez_compressed(path+"/grid_modname_{}_age_{}".format(og.mod_name, Age),\
                                     points_noadj_vec  = points_noadj_vec[int(Age-tzero)],\
                                     points_adj_vec = points_adj_vec[int(Age-tzero)],\
                                     points_rent_vec = points_rent_vec[int(Age-tzero)],\
                                     A_prime = A_prime[int(Age-tzero)])
 
 
-            np.savez_compressed(path+"/grigrid_modname_{}_genfiles".format(og.mod_name, Age),\
-                        X_all_ind_W_vals  = X_all_ind_W_vals,\
-                        X_prime_vals = X_prime_vals)
-
+        np.savez_compressed(path+"/grid_modname_{}_genfiles".format(og.mod_name),\
+                    X_all_ind_W_vals  = X_all_ind_W_vals,\
+                    X_prime_vals = X_prime_vals)
         return 0
-
     else:
         return  X_all_ind_W_vals, X_prime_vals, points_noadj_vec, points_adj_vec, points_rent_vec, A_prime

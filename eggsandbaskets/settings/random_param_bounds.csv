@@ -1,11 +1,11 @@
 parameter,UB,LB
-gamma,6,1.1
-alpha_bar,0.9,0.2
+gamma,6,1.3
+alpha_bar,0.8,0.2
 rho_alpha,0.99,0.0001
 sigma_alpha,0.3,0.0001
 rho,1,0.1
-theta,50,0.0001
-beta_bar,0.99,0.65
+theta,50,0.01
+beta_bar,0.99,0.85
 rho_beta,0.99,0.0001
 sigma_beta,0.3,0.001
 sigma_plan,60,0.0001

@@ -24,83 +24,14 @@ og = lifecycle_model.LifeCycleModel(eggbasket_config['baseline_lite'],
 from mpi4py import MPI as MPI4py
 world = MPI4py.COMM_WORLD
 
-#ID = '20201023-132142_test_0'
 
-#policies = generate_worker_pols(og,world, load_retiree=1, gen_newpoints = False)
-
-#pickle.dump(policies, \
-#           open("/scratch/pv33/ls_model_temp/DB_lite.pols", "wb"))
-
-
-ID = 'ZE0SFT_20201028-171646'
+og.ID = 'CNX7HO_20201103-165519_test'
 modname = 'test'
 
-numpy_vars_DC = {}
-numpy_vars_DB = {}
-os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(modname +'/'+ID+'_' +modname+'_acc_'+str(1)))
-for np_name in glob.glob('*np[yz]'):
-    numpy_vars_DC[np_name] = dict(np.load(np_name, mmap_mode = 'r'))
+generate_TSDF,load_pol_array = genprofiles_operator(og)
+policy = load_pol_array(og.ID,modname)
 
-os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(modname +'/'+ID+'_' +modname+'_acc_'+str(1)))
-for np_name in glob.glob('*np[yz]'):
-    numpy_vars_DB[np_name] = dict(np.load(np_name, mmap_mode = 'r'))
 
-var_keys = copy.copy(list(numpy_vars_DB.keys()))
-
-for keys in var_keys:
-    numpy_vars_DB[keys.split('_')[1]] = numpy_vars_DB.pop(keys)
-
-var_keys = copy.copy(list(numpy_vars_DC.keys()))
-for keys in var_keys:
-    numpy_vars_DC[keys.split('_')[1]] = numpy_vars_DC.pop(keys)
-
-#npz_file_dict = np.load("/scratch/pv33/ls_model_temp")
-policy_c_noadj = []
-etas_noadj = []
-policy_a_noadj = []
-policy_c_adj = []
-policy_h_adj = []
-policy_a_adj = []
-policy_h_rent = []
-policy_zeta = []
-policy_prob_v = []
-policy_prob_pi = []
-tzero = og.parameters.tzero
-R = og.parameters.R
-
-for Age in np.arange(int(og.parameters.tzero), int(og.parameters.R)):
-
-        start = time.time()
-        policy_c_adj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['C_adj'], numpy_vars_DC[str(int(Age))]['C_adj'])))
-        policy_h_adj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['H_adj'], numpy_vars_DC[str(int(Age))]['H_adj'])))
-        policy_a_adj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['Aprime_adj'], numpy_vars_DC[str(int(Age))]['Aprime_adj'])))
-        policy_c_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['C_noadj'],numpy_vars_DC[str(int(Age))]['C_noadj'])))
-        etas_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['etas_noadj'], numpy_vars_DC[str(int(Age))]['etas_noadj'])))
-        policy_a_noadj.append(np.concatenate((numpy_vars_DB[str(int(Age))]['Aprime_noadj'], numpy_vars_DC[str(int(Age))]['Aprime_noadj'])))
-        policy_zeta.append(np.concatenate((numpy_vars_DB[str(int(Age))]['zeta'], numpy_vars_DC[str(int(Age))]['zeta'])))
-        policy_h_rent.append(np.concatenate((numpy_vars_DB[str(int(Age))]['H_rent'], numpy_vars_DC[str(int(Age))]['H_rent'])))
-        policy_prob_v.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_v'], numpy_vars_DC[str(int(Age))]['prob_v'])))
-        policy_prob_pi.append(np.concatenate((numpy_vars_DB[str(int(Age))]['prob_pi'], numpy_vars_DC[str(int(Age))]['prob_pi'])))
-
-        #print("Loaded policies for DB age {} in {}".format(Age, time.time()-start))
-
-        if Age== og.parameters.tzero:
-            policy_VF = np.concatenate((numpy_vars_DB[str(int(Age))]['policy_VF'],numpy_vars_DC[str(int(Age))]['policy_VF']))
-        del numpy_vars_DB[str(int(Age))]
-        del numpy_vars_DC[str(int(Age))]
-        gc.collect()
-
-policy = [policy_c_noadj,\
-                    etas_noadj,\
-                    policy_a_noadj,\
-                    policy_c_adj,\
-                    policy_h_adj,\
-                    policy_a_adj,\
-                    policy_h_rent,\
-                    policy_zeta,\
-                    policy_prob_v,\
-                    policy_prob_pi,\
-                    policy_VF]
 
 from matplotlib.colors import DivergingNorm
 import matplotlib.colors as mcolors
@@ -110,7 +41,7 @@ import matplotlib.pyplot as plt
 plots_folder = '/home/141/as3442/temp_plots/'
 NUM_COLORS = len(og.grid1d.M)
 colormap = cm.viridis
-M_vals = np.linspace(0, og.grid1d.M[-1], 15)
+M_vals = np.linspace(0, og.grid1d.M[-1], 9)
 normalize = mcolors.Normalize(vmin=np.min(M_vals), vmax=np.max(M_vals))
 
 acc_ind = 1
@@ -138,26 +69,28 @@ for age in np.arange(int(og.parameters.tzero), int(og.parameters.R)):
             cbar = plt.colorbar(scalarmappaple)
             cbar.set_label('Mort. liability')
 
-            plt.savefig(
-                '{}/{}_W_{}_DC{}_P{}.png'.format(plots_folder, age, key, k, l))
+            plt.savefig('{}/{}_W_{}_DC{}_P{}.png'.format(plots_folder, age, key, k, l))
 
             plt.close()
 
 """
 
+
+
 TSN = 100
 U = np.random.rand(6,100,TSN,100) 
 
-TSALL_10_df, TSALL_14_df = gen_panel_ts(og, ID,U, TSN)
+TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
 
-moments_male        = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
+moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
 
-moments_female      = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
+moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
 
 
-moments_sim_sorted    = sortmoments(moments_male,\
+moments_sim_sorted = sortmoments(moments_male,\
                                      moments_female)
+
+
+# Return policies 
+
 """
-
-
-
