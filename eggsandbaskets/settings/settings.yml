@@ -103,19 +103,19 @@ baseline_lite:
     C_min: 1.0e-10
     DC_max: 20.0
     DC_min: .1
-    H_max: 20
-    HS_max: 20
+    H_max: 12
+    HS_max: 12
     H_min: 1.0e-5
     ID: 188198904234
-    M_max: 8.0
+    M_max: 5.0
     M_min: 0.0
     Q_max: 1.25
     Q_min: 0.5
     R: 64.0
     T: 99.0
     alpha: 1.0
-    alpha_bar: 0.7
-    beta_bar: 0.96
+    alpha_bar: 0.696338
+    beta_bar: 0.99
     beta_m: 1
     r_m: .0614
     def_pi: 0.7
@@ -123,59 +123,59 @@ baseline_lite:
     f_ACF: 0.8625
     f_ASF: 1.0
     f_LSF: 0.23
-    gamma: 4.5
+    gamma: 1.3
     grid_size_A: 15.0
     grid_size_C: 15.0
     grid_size_DC: 6.0
     grid_size_DCR: 2.0
-    grid_size_H: 15
-    grid_size_HS: 100
+    grid_size_H: 15.0
+    grid_size_HS: 30
     grid_size_M: 15.0
     grid_size_Q: 6.0
-    grid_size_Q_s: 2.0
+    grid_size_Q_s: 3.0
     grid_size_W: 2.0
-    grid_size_alpha: 2.0
-    grid_size_beta: 2.0
+    grid_size_alpha: 1.0
+    grid_size_beta: 1.0
     h: 1.68
     k: 2.64169
     kappa_m: 0
     l: 0.54
-    nu_p_0: -1.876
+    nu_p_0: 12
     nu_p_1: -0.112
     nu_p_2: 0.000875
-    nu_r_0: -6.788
+    nu_r_0: 12
     nu_r_1: -0.033
     nu_r_2: 0.0001308
     nu_r_3: 0.109
     nu_r_4: 2.108
-    nu_v_0: -2.175
-    nu_v_1: 48.531
+    nu_v_0: 12
+    nu_v_1: 41.62 
     nu_v_2: -0.00102
     nu_v_3: -0.34
     phi_c: 0.2
     phi_r: .06
     phi_d: 0.2
     phi_w: 0.4044149
-    psi: 0.10702
+    psi: 1000
     r: 0.025
     r_H: 0.032
     r_h: 0.0476
     r_l: 0.0193
     rho: -1.0
-    rho_alpha: 0.02185853152739587
+    rho_alpha: 0.126099 
     rho_beta: 0.2834749347431
-    sigma_DB_V: 1.6276545300479683
-    sigma_DB_pi: 1.615148150954181
-    sigma_DC_V: 1.5325037821721488
-    sigma_DC_pi: 0.6874670262571703
+    sigma_DB_V: .0001
+    sigma_DB_pi: .0001
+    sigma_DC_V: .0001
+    sigma_DC_pi: .0001
     sigma_alpha: 0.004177598740390481
     sigma_beta: 0.00002
     sigma_d: 0.064
-    sigma_plan: 20.234900943610153
+    sigma_plan: .0001
     sigma_r_H: 0.0011
     sigma_w: 0.0221957
     tau_housing: 0.08
-    theta: 2
+    theta: 300
     tzero: 16.0
     v_E: 0.17
     v_S: 0.0235
@@ -287,6 +287,7 @@ baseline_lite:
   vol_cont_points:
   - 0.0
   - 0.01
+  - 0.18
   - 0.034
   normalisation:
   - 1

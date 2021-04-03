@@ -130,7 +130,7 @@ class LifeCycleModel:
             self.T = int(self.T)
 
             # overide pre-set welath and mortgage max
-            self.M_max = self.H_max*self.Q_max*(1-self.phi_c)
+            #self.M_max = self.H_max*self.Q_max*(1-self.phi_c)
             self.A_max_WW = self.H_max*self.Q_max + self.A_max_W
             self.A_max_WE = self.H_max*self.Q_max + self.A_max_R
 
@@ -727,7 +727,7 @@ class LifeCycleParams:
                  random_bounds=None,  # parameter bounds for randomly generated params
                  param_random_means=None,  # mean of random param distribution
                  param_random_cov=None,
-                 uniform=False):  # cov of random param distribution :
+                 uniform = False):  # cov of random param distribution :
         self.param_id = ''.join(random.choices(
             string.ascii_uppercase + string.digits, k=6))+'_'+time.strftime("%Y%m%d-%H%M%S") + '_'+mod_name
         self.mod_name = mod_name
@@ -752,10 +752,10 @@ class LifeCycleParams:
 
             parameters_draws = rand_p_generator(param_deterministic,
                                                 random_bounds,
-                                                deterministic=0,
-                                                initial=uniform,
-                                                param_random_means=param_random_means,
-                                                param_random_cov=param_random_cov)
+                                                deterministic = 0,
+                                                initial = uniform,
+                                                param_random_means = param_random_means,
+                                                param_random_cov = param_random_cov)
             param_dict_new = copy.copy(param_dict)
             param_dict_new['parameters'] = parameters_draws
 
@@ -835,4 +835,4 @@ if __name__ == "__main__":
                                 # Mean of random param distribution
                                 param_random_means=sampmom[0],
                                 param_random_cov=sampmom[1],
-                                uniform=False)
+                                uniform = False)

@@ -10,10 +10,12 @@ import gc
 import lifecycle_model 
 from solve_policies.worker_solver import generate_worker_pols
 from generate_timeseries.tseries_generator import gen_panel_ts, gen_moments, sortmoments, genprofiles_operator
-
 import numpy as np
 
 # Read settings
+
+model_name = 'test'
+
 with open("settings/settings.yml", "r") as stream:
     eggbasket_config = yaml.safe_load(stream)
 
@@ -25,14 +27,14 @@ from mpi4py import MPI as MPI4py
 world = MPI4py.COMM_WORLD
 
 
-og.ID = 'CNX7HO_20201103-165519_test'
-modname = 'test'
+og.ID = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
+
 
 generate_TSDF,load_pol_array = genprofiles_operator(og)
-policy = load_pol_array(og.ID,modname)
+#policy = load_pol_array(og.ID,modname)
 
 
-
+"""
 from matplotlib.colors import DivergingNorm
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
@@ -73,8 +75,8 @@ for age in np.arange(int(og.parameters.tzero), int(og.parameters.R)):
 
             plt.close()
 
-"""
 
+"""
 
 
 TSN = 100
@@ -87,10 +89,9 @@ moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_s
 moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
 
 
-moments_sim_sorted = sortmoments(moments_male,\
-                                     moments_female)
+moments_sim_sorted = sortmoments(moments_male, moments_female)
 
 
 # Return policies 
 
-"""
+

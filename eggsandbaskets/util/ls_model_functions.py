@@ -86,14 +86,14 @@ def lsmodel_function_factory(parameters,
 
 	@njit
 	def uc_inv(uc, h, alpha):
-		"Inverse of derivative of MUC holding current period housing fixed"
+		"Inverse of MUC holding current period housing fixed"
 		exp_h = alpha*(gamma-1)/(gamma*(alpha-1)-alpha)
 		exp_uc = 1/(gamma*(alpha-1)-alpha)
 		return ((uc/(1-alpha))**(exp_uc))*h**exp_h
 
 	@njit
 	def uh_inv(uc, h, alpha):
-		"Inverse of derivative of MUH holding current period housing fixed"
+		"Inverse of MUH holding current period housing fixed"
 		exp_h = (1-alpha*(1-gamma))/((1-alpha)*(1-gamma))
 		exp_uc = 1/(1-alpha)*(1-gamma)
 		return ((uc/alpha)**(exp_uc))*h**exp_h
@@ -164,7 +164,7 @@ def lsmodel_function_factory(parameters,
 	def adj_p(t_zero):
 		"""Gives adjustment cost at tzero for plan switching
 		"""
-		return (psi_adj + np.exp(nu_p_0 + nu_p_1*t_zero + nu_p_2*np.power(t_zero,2)))
+		return min(1e300,(psi_adj + np.exp(nu_p_0 + nu_p_1*t_zero + nu_p_2*np.power(t_zero,2))))
 
 	@njit
 	def adj_v(t, a):
@@ -172,13 +172,17 @@ def lsmodel_function_factory(parameters,
 		"""
 		var_1 	= np.log(a)
 		var_1[var_1<=0] = 0
-		return (psi_adj + np.exp(nu_v_0 + nu_v_2*np.power((t - nu_v_1),2) + nu_v_3*var_1))/normalisation[1]
+		cost = (psi_adj + np.exp(nu_v_0 + nu_v_2*np.power((t - nu_v_1),2) + nu_v_3*var_1))
+		cost[cost>=1e300] = 1e300
+		return cost
 
 	@njit
 	def adj_pi(t, a_dc, adj_p):
 		var_1 	= np.log(a_dc)
 		var_1[var_1<=0] = 0
-		return (psi_adj + np.exp(nu_r_0 + nu_r_1*t + nu_r_2*np.power(t,2) + nu_r_3*var_1) + nu_r_4*adj_p)/normalisation[1]
+		cost = (psi_adj + np.exp(nu_r_0 + nu_r_1*t + nu_r_2*np.power(t,2) + nu_r_3*var_1) + nu_r_4*adj_p)
+		cost[cost>=1e300] = 1e300
+		return cost 
 
 	@njit 
 	def amort_rate(t):

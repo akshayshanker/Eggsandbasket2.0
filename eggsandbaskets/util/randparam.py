@@ -3,10 +3,10 @@ import numpy as np
 def rand_p_generator(
                     param_deterministic, # dictionary containing deterministic parameters
                     param_random_bounds, # dictionary containing random parameters 
-                    param_random_means=0,  # array of means of sampling distribution
-                    param_random_cov=0,  # array of means of sampling distribution
+                    param_random_means = 0,  # array of means of sampling distribution
+                    param_random_cov = 0,  # array of means of sampling distribution
                     deterministic = 1,   # flag to make all parmaeters determinstic 
-                    initial =1, # if initial then draws from uniform disitrubution within bounds 
+                    initial = 1, # if initial then draws from uniform disitrubution within bounds 
                     ):
 
     """Function generates list of parameters with 
@@ -28,6 +28,12 @@ def rand_p_generator(
         np.array([(bdns) for key, bdns in param_random_bounds.items()] ) 
 
     # generate random sample
+    random_draw = np.random.uniform(0, 1)
+    # noise injection rate of 10%
+    #if random_draw<.1:
+    #    initial = 1
+
+
     in_range = False
     if deterministic == 0 and initial == 0:
 
@@ -36,7 +42,7 @@ def rand_p_generator(
 
             if np.sum(draws> random_param_bounds_ar[:,1]) + np.sum(draws<random_param_bounds_ar[:,0])==0:
                 in_range = True
-                print("in range")
+               #print("in range")
             else:
                 pass
             for i,key in zip(np.arange(len(draws)),param_random_bounds.keys()):

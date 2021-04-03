@@ -16,6 +16,10 @@ akshay.shanker@me.com
 """
 
 import numpy as np
+import sys
+sys.path.append("..")
+from eggsandbaskets.util.helper_funcs import gen_policyout_arrays, d0, interp_as,\
+    gen_reshape_funcs, einsum_row
 from numba import njit, prange, vectorize, int64, float64,guvectorize
 from interpolation.splines import UCGrid, CGrid, nodes, eval_linear
 from interpolation import interp
@@ -100,46 +104,7 @@ def retiree_func_factory(og):
 
     acc_ind = og.acc_ind[0]
 
-    @njit
-    def interp_as(xp,yp,x):
-        """ interpolates 1D
-        with linear extraplolation 
 
-        Parameters
-        ----------
-        xp : 1D array
-              points of x values
-        yp : 1D array
-              points of y values
-        x  : 1D array
-              points to interpolate 
-
-        Returns
-        -------
-        evals: 1D array  
-                y values at x 
-
-        """
-
-        evals = np.zeros(len(x))
-
-        for i in range(len(x)):
-            if x[i]< xp[0]:
-                if (xp[1]-xp[0])!=0:
-                    evals[i]= yp[0]+(x[i]-xp[0])*(yp[1]-yp[0])\
-                        /(xp[1]-xp[0])
-                else:
-                    evals[i] = yp[0]
-
-            elif x[i] > xp[-1]:
-                if (xp[-1]-xp[-2])!=0:
-                    evals[i]= yp[-1]+(x[i]-xp[-1])*(yp[-1]-yp[-2])\
-                        /(xp[-1]-xp[-2])
-                else:
-                    evals[i] = yp[-1]
-            else:
-                evals[i]= np.interp(x[i],xp,yp)
-        return evals
 
     @njit
     def interp_adj(a_adj,c_adj, wealth_endgrid, extrap = True):
@@ -436,7 +401,7 @@ def retiree_func_factory(og):
                             = gen_UC_RHS(t,x_prime,h,q,m_prime,\
                                      *t_prime_funcs)
 
-        c_t                 = max(C_min,uc_inv(UC_prime_RHS, h, alpha_housing))
+        c_t                 = max(C_min,uc_inv(max(1e-250,UC_prime_RHS), h, alpha_housing))
 
         RHS                 = uc(c_t, h, alpha_housing)*q*(1+tau_housing)\
                                  - UC_prime_H_RHS
@@ -627,8 +592,7 @@ def retiree_func_factory(og):
                                         h,\
                                         alpha_housing)
         else:
-            m_prime = max(0,min(m_prime_m,interp(A_R,m_prime_func,\
-                                        x_prime)))
+            m_prime = max(0,min(m_prime_m,np.interp(x_prime,A_R,m_prime_func)))
 
 
             UC_prime_RHS, UC_prime_H_RHS, UC_prime_HFC_RHS,\
@@ -771,7 +735,7 @@ def retiree_func_factory(og):
 
         # evaluate array of next period eta adjustment multipliers 
 
-        eta_primes_vals = eval_linear(X_cont_R, eta_prime_noadj, state_prime_R)
+        eta_primes_vals = eval_linear(X_cont_R, eta_prime_noadj, state_prime_R, xto.LINEAR)
 
         # evaluate where adjustment occurs 
         # adjustment occurs where someone
@@ -798,13 +762,13 @@ def retiree_func_factory(og):
         c_prime_adj_vals, a_prime_adj_vals,\
         h_prime_adj_vals = eval_linear(X_QH_R,\
                                                 c_prime_adj,\
-                                                state_prime_RW),\
+                                                state_prime_RW,xto.LINEAR),\
                                      eval_linear(X_QH_R,\
                                                 a_prime_adj,\
-                                                state_prime_RW,), \
+                                                state_prime_RW,xto.LINEAR), \
                                      eval_linear(X_QH_R,\
                                                 h_prime_adj,\
-                                                state_prime_RW)
+                                                state_prime_RW,xto.LINEAR)
 
         c_prime_adj_vals[state_prime_RW[:,2]\
                                 <=0] =  C_min
@@ -823,10 +787,10 @@ def retiree_func_factory(og):
         
         c_prime_noadj_vals,a_prime_noadj_vals  = eval_linear(X_cont_R,\
                                                         c_prime_noadj,\
-                                                        state_prime_R),\
+                                                        state_prime_R, xto.LINEAR),\
                                                     eval_linear(X_cont_R,\
                                                         a_prime_noadj,\
-                                                        state_prime_R)
+                                                        state_prime_R, xto.LINEAR)
 
         c_prime_noadj_vals[c_prime_noadj_vals<=C_min] = C_min
         c_prime_noadj_vals[np.isnan(c_prime_noadj_vals)] = C_min
@@ -910,7 +874,7 @@ def retiree_func_factory(og):
                                                       Q_prime, mort_dp_prime))
 
         UF_dp_val_norent            = beta_bar*eval_linear(X_cont_R, UF_dbprime,\
-                                                     state_dp_prime_norent)
+                                                     state_dp_prime_norent, xto.LINEAR)
 
         #   t+1 marginal utility of consumption for non-retning 
 
@@ -919,7 +883,7 @@ def retiree_func_factory(og):
         # STEP 9: combine all  renter policies 
 
         h_prime_rent_val        = eval_linear(W_Q_R,h_prime_rent,\
-                                                state_prime_rent)
+                                                state_prime_rent, xto.LINEAR)
 
         c_prime_rent_val        = phi_r*Q_prime*h_prime_rent_val\
                                         *(1-alpha_housing)/alpha_housing
@@ -949,7 +913,7 @@ def retiree_func_factory(og):
                                         h_prime_val_norent, alpha_housing)
 
         UF_dp_val_rent           = beta_bar*eval_linear(X_cont_R, UF_dbprime,\
-                                             state_dp_prime_rent)
+                                             state_dp_prime_rent, xto.LINEAR)
 
         # STEP 10: make renting vs. no renting decision  and combine all policies 
 
@@ -1044,6 +1008,9 @@ def retiree_func_factory(og):
                 *mort_FOC( M[-1], *m_mort_args)<0:
                 m_prime_func[i] = brentq(mort_FOC, 0,M[-1],\
                                             args= m_mort_args)[0]
+                if m_prime_func[i] == np.nan:
+                    m_prime_func[i] = 0
+
             # check if m_t+1 is constrained by max mortgage
             elif UC_prime_RHSm> UC_prime_M_RHSm:
                 m_prime_func[i] = m_prime_m
@@ -1057,6 +1024,7 @@ def retiree_func_factory(og):
                  m_prime_func[i] = 0 
 
         # reshape to wide and return function 
+        #print(m_prime_func)
         return m_prime_func.reshape(grid_size_A,grid_size_H,grid_size_Q)
 
 
@@ -1188,18 +1156,18 @@ def retiree_func_factory(og):
             if HA_FOC(A_min, *args_HA_FOC )*HA_FOC(A_max_R, *args_HA_FOC)<0:
 
                  # if interior solution to a_t+1, calculate it 
-                a_adj[i]        = max(brentq(HA_FOC, A_min,A_max_R,\
+                a_adj[i] = max(brentq(HA_FOC, A_min,A_max_R,\
                                     args = args_HA_FOC)[0], A_min)
 
 
                 
-                c_adj[i]        = max(HA_FOC(a_adj[i],H[h_index],\
+                c_adj[i] = max(HA_FOC(a_adj[i],H[h_index],\
                                         Q[q_index],\
                                         M[m_index],\
                                         m_prime_func[:,h_index,q_index],\
                                         t_prime_funcs,t,ret_cons = True), C_min)
                 
-                m_prime1         = min(max(HA_FOC(a_adj[i],H[h_index],\
+                m_prime1 = min(max(HA_FOC(a_adj[i],H[h_index],\
                                         Q[q_index],\
                                         M[m_index],\
                                         m_prime_func[:,h_index,q_index],\
@@ -1243,7 +1211,6 @@ def retiree_func_factory(og):
         wealth_endgrid_nl  = np.zeros(grid_size_H*grid_size_Q*grid_size_M)
         c_adj_nl           = np.zeros(grid_size_H*grid_size_Q*grid_size_M)
         a_adj_nl           = np.zeros(grid_size_H*grid_size_Q*grid_size_M)
-
         zeta               = np.zeros(grid_size_H*grid_size_Q*grid_size_M)
 
         for i in range(len(X_H_R_ind)):
@@ -1662,7 +1629,7 @@ def retiree_func_factory(og):
 
                     UF_dp_val_norent  = beta_bar*eval_linear(X_cont_R,\
                                                 UF_dbprime,\
-                                                state_dp_prime_norent )
+                                                state_dp_prime_norent, xto.LINEAR)
 
                     # policies with renting 
 
@@ -1686,7 +1653,7 @@ def retiree_func_factory(og):
 
                     UF_dp_val_rent       = beta_bar*eval_linear(X_cont_R,\
                                                     UF_dbprime,\
-                                                    state_dp_prime_rent)
+                                                    state_dp_prime_rent, xto.LINEAR)
                     # index to rent or not
 
                     rent_ind             = u_rent+ UF_dp_val_rent> \

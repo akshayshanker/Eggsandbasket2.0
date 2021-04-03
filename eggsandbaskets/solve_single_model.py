@@ -57,8 +57,8 @@ if __name__ == "__main__":
 	world_size = world.Get_size()
 	world_rank = world.Get_rank()
 
-	block_size_layer_1 = 4
-	block_size_layer_2 = 2
+	block_size_layer_1 = 6
+	block_size_layer_2 = 3
 	block_size_layer_ts = 8
 
 	# Read settings
@@ -72,7 +72,7 @@ if __name__ == "__main__":
 			param_random_bounds[row['parameter']] = np.float64([row['LB'],\
 				row['UB']])
 
-	sampmom 	= pickle.load(open("/scratch/pv33/ls_model_temp/test/latest_means_iter.smms","rb"))
+	sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/test/latest_means_iter.smms","rb"))
 
 
 
@@ -97,10 +97,10 @@ if __name__ == "__main__":
 	print("Rank {} on world is rank {} on layer 1 and rank {} on layer 2 and model ID is {}"\
 			.format(world_rank,layer_1_comm.rank, layer_2_comm.rank,LS_models.param_id))
 
-	if layer_1_comm.rank == 0 or layer_1_comm.rank == 1:
+	if layer_1_comm.rank == 0 or layer_1_comm.rank == 1 or layer_1_comm.rank == 2 :
 		og  = LS_models.og_DB
 
-	if layer_1_comm.rank == 2 or layer_1_comm.rank == 3:
+	if layer_1_comm.rank == 3 or layer_1_comm.rank == 4 or layer_1_comm.rank == 5:
 		og  = LS_models.og_DC
 
 	if layer_1_comm.rank == 0:
@@ -110,11 +110,10 @@ if __name__ == "__main__":
 
 	param_id_list = world.gather(param_id, root=0)
 
-	if world.rank ==0:
+	if world.rank == 0:
 		param_id_list = print([item for item in param_id_list if item is not None])
 
-	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = 0, gen_newpoints = False)
-
+	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = 1, gen_newpoints = False)
 
 	# Generate moments 
 	if layer_1_comm.rank == 0:

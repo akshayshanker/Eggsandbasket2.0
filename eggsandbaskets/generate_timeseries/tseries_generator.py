@@ -26,6 +26,8 @@ from numba import njit
 from itertools import permutations
 from interpolation.splines import extrap_options as xto
 import gc
+import sys
+sys.path.append("..")
 from eggsandbaskets.util.helper_funcs import *
 import glob 
 import copy
@@ -151,7 +153,7 @@ def genprofiles_operator(og,
         prob_V_vals = np.empty(len(V))
         prob_V_vals[:] = eval_linear(X_cont_W,\
                                  prob_v_func,\
-                                 points) 
+                                 points, xto.LINEAR) 
         prob_V_vals[np.isnan(prob_V_vals)] = 0
         prob_v = prob_V_vals/np.sum(prob_V_vals)
 
@@ -161,7 +163,7 @@ def genprofiles_operator(og,
         v = V[V_ind]
         prob_pi_func = policy_prob_pi[Age][account_ind,E_ind,alpha_ind,beta_ind,V_ind,:]
         prob_pi_vals = np.empty(len(Pi))
-        prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points) 
+        prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points,  xto.LINEAR) 
         prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
         Pi_ind  = np.arange(len(Pi))\
                     [np.searchsorted(np.cumsum(prob_Pi), pi_ushock)]
@@ -258,10 +260,12 @@ def genprofiles_operator(og,
         Prob_DC = np.exp(V_DC_scaled)/(np.exp(V_DB_scaled)\
                         +   np.exp(V_DC_scaled ) )    
 
-        account_ind = int(np.searchsorted(
-                                        np.cumsum(np.array([1-Prob_DC,\
+
+        Prob_DC = np.float64(min(max(0.1, Prob_DC), 0.9))
+        #print(Prob_DC)
+        account_ind = np.searchsorted(np.cumsum(np.array([1-Prob_DC,\
                                                              Prob_DC])),\
-                                                            DBshock))
+                                                            DBshock)
 
         #account_ind = 1
 
@@ -275,7 +279,7 @@ def genprofiles_operator(og,
                 h = TS_H*(1-delta_housing)
                 q = P_h[t]
                 E_val = E[int(W[t])]
-                alpha_val   = np.exp( alpha_hat[int(alpha_hat_ts[t])] + np.log(alpha_bar))
+                alpha_val   = alpha_hat[int(alpha_hat_ts[t])]
 
                 # Get min payment. Recall policy functions at
                 # t for mortgage are defined on (1+r_m)m(t)
@@ -307,7 +311,7 @@ def genprofiles_operator(og,
 
                 # Wealth for renters, non-adjusters and adjusters 
                 wealth_no_adj = TS_A*(1+r) + (1-v -v_S -v_E)*TS_wage - min_payment
-                wealth_rent = wealth_no_adj + P_h[t]*h - TS_M*(1+r_m)
+                wealth_rent = wealth_no_adj + P_h[t]*h - TS_M #*(1+r_m)
                 wealth_adj  = wealth_no_adj + P_h[t]*h
 
                 # Get rent and adjustment multipler values  
@@ -326,7 +330,7 @@ def genprofiles_operator(og,
                 # Take note of the DC value in the points_noadj
                 # Policy functions are defined on the after vol.cont 
                 # decision on DC 
-                points_noadj = np.array([wealth_no_adj,DC_prime,TS_H, P_h[t], TS_M*(1+r_m)])
+                points_noadj = np.array([wealth_no_adj,DC_prime,TS_H, P_h[t], TS_M]) #*(1+r_m) Should there be a 1 + r_m for mortgages here?
 
                 eta_func =  policy_etas_noadj[t-tzero][account_ind,\
                                                     E_ind,\
@@ -430,7 +434,7 @@ def genprofiles_operator(og,
                 TS_V = v
 
                 # If t not terminal, iterate forward 
-                if t== age:
+                if t == age:
                     wave_data_10 = np.array([account_ind,age, TS_A*norm,TS_M*norm, renter1,\
                                             TS_H_1*norm, TS_DC*norm, TS_C*norm, \
                                             TS_wage*norm, TS_V, TS_V*TS_wage*norm,TS_PI,\
@@ -575,7 +579,7 @@ def genprofiles_operator(og,
 
         os.chdir('/scratch/pv33/ls_model_temp/{}/'.format(mod_name +'/'+ID+'_acc_'+str(0)))
         for np_name in glob.glob('*np[yz]'):
-            numpy_vars_DB[np_name] = dict(np.load(np_name),memmap = 'r')
+            numpy_vars_DB[np_name] = dict(np.load(np_name), memmap = 'r')
             #print("Laoded mmap {}".format(np_name))
 
         var_keys = copy.copy(list(numpy_vars_DB.keys()))
@@ -586,15 +590,15 @@ def genprofiles_operator(og,
             numpy_vars_DC[keys.split('_')[1]] = numpy_vars_DC.pop(keys)
 
         policy_c_noadj= []
-        etas_noadj= []
+        etas_noadj = []
         policy_a_noadj = []
         policy_c_adj = []
-        policy_h_adj= []
-        policy_a_adj= []
-        policy_h_rent= []
-        policy_zeta= []
-        policy_prob_v= []
-        policy_prob_pi= []
+        policy_h_adj = []
+        policy_a_adj = []
+        policy_h_rent = []
+        policy_zeta = []
+        policy_prob_v = []
+        policy_prob_pi = []
         
         tzero = og.parameters.tzero
         R = og.parameters.R
@@ -1058,13 +1062,23 @@ def sortmoments(moments_male, moments_female):
     return moments_sorted 
 
 if __name__ == '__main__':
-    import os
-
+    
     import seaborn as sns
+    import yaml
+    import dill as pickle
+    import glob 
+    import copy
+    import os
+    import time
+    import gc
+
+    # Housing model modules
+    sys.path.append("..")
+    import lifecycle_model 
+    import numpy as np
 
     simlist_f = ['female_4']
     simlist_m = ['male_16']
-
     sim_id = "male_16"
 
     for sim_id_m, sim_id_f  in zip(simlist_m,simlist_f):
@@ -1077,18 +1091,6 @@ if __name__ == '__main__':
             "axes.grid.axis":"both","axes.linewidth":2,"axes.labelsize":18})
         plt.rcParams["figure.figsize"] = (20,10)
         sns.set_style('white')
-        
-        
-
-        #og_male = pickle.load(open("/scratch/pv33/baseline_male.mod","rb")) 
-        #og_female = pickle.load(open("/scratch/pv33/baseline_female.mod","rb")) 
-        
-        #og_male.accountdict        = {}
-        #og_male.accountdict[1]         = 'DC'
-        #og_male.accountdict[0]         = 'DB'
-        #og_female.accountdict      = {}
-        #og_female.accountdict[1]       = 'DC'
-        #og_female.accountdict[0]       = 'DB'
 
 
         def create_plot(df,col1,col2, source, marker,color, ylim, ylabel):
@@ -1165,81 +1167,75 @@ if __name__ == '__main__':
             figure.savefig("{}/{}.png".format(sim_id,col2), transparent=True)
            
 
-        #TSALL_10_male,TSALL_14_male  = genprofiles(og_male, N = 100)
-
-        #pickle.dump(TSALL_10_male, open("/scratch/pv33/TSALL_10_male.mod","wb"))
-        #pickle.dump(TSALL_14_male, open("/scratch/pv33/TSALL_14_male.mod","wb"))
-
-        #TSALL_10_female,TSALL_14_female  =genprofiles(og_female, N = 100)
+        # Read settings
+        with open("settings/settings.yml", "r") as stream:
+            eggbasket_config = yaml.safe_load(stream)
 
 
-        #pickle.dump(TSALL_10_female, open("/scratch/pv33/TSALL_10_female.mod","wb"))
-        #pickle.dump(TSALL_14_female, open("/scratch/pv33/TSALL_14_female.mod","wb"))
+        og = lifecycle_model.LifeCycleModel(eggbasket_config['baseline_lite'],
+                        np.array([0]), param_id = 'test', mod_name = 'test')
 
-        og =pickle.load(open("base_model.md","rb"))
+        model_name = 'test'
+        #og.ID = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
+        og.ID = '85CXRS_20210331-181817_test'
+        
+        settings_folder = 'settings/'
+        
+
+        generate_TSDF,load_pol_array = genprofiles_operator(og)
 
         # generate random numbers for the simulation
-
-        U = np.random.rand(6,100,250,100)       
-
         # generate TS
-        generate_TSDF     = genprofiles_operator(og)
-        TS1, TS2        = generate_TSDF(U,100, *og.policies)
-        #TSALL_10_female, TSALL_14_female= generate_TS(U,N = 250)
-        #moments_male        = gen_moments(copy.copy(TS1),copy.copy(TS2))   
-        #moments_female      = gen_moments(copy.copy(TS1),copy.copy(TS2)) 
 
-        #TSALL_10_male, TSALL_14_male = pickle.load(open("TSALL_10_{}.mod".format(sim_id_m),"rb")), pickle.load(open("TSALL_14_{}.mod".format(sim_id_m),"rb"))
-        #TSALL_10_female, TSALL_14_female = pickle.load(open("TSALL_10_{}.mod".format(sim_id_f),"rb")), pickle.load(open("TSALL_14_{}.mod".format(sim_id_f),"rb")) 
+        TSN = 100
+        U = np.random.rand(6,100,TSN,100) 
 
-         
-        moments_male = gen_moments(TS1,TS2)
-        #moments_male = pd.read_csv('moments_male_old.csv')
-        moments_female = gen_moments(TS1,TS2)
+        TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
 
-        moments_female = moments_female.add_suffix('_female')
-        moments_male = moments_male.add_suffix('_male')
+        moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
+
+        moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
+
+        os.chdir('/home/141/as3442/Eggsandbaskets/eggsandbaskets')  
         
         moments_male.to_csv("/scratch/pv33/moments_male.csv") 
         moments_female.to_csv("/scratch/pv33/moments_female.csv") 
 
         moments_sorted  = sortmoments(moments_male, moments_female)
-        
 
-        moments_sorted.to_csv("{}/moments_sorted.csv".format(sim_id))  
+        moments_sorted.to_csv("{}/moments_sorted.csv".format(model_name))  
 
         moments_sorted = pd.concat([moments_male["Age_wave10_male"].reset_index().iloc[:,1], moments_sorted], axis =1)  
 
         moments_sorted = moments_sorted.rename(columns = {'Age_wave10_male':'Age_wave10'})
         
-        moments_data = pd.read_csv('moments_data.csv')
-        moments_data = moments_data.drop('Unnamed: 0', axis=1)   
+        moments_data = pd.read_csv('{}moments_data.csv'\
+                    .format(settings_folder))
+        #moments_data = moments_data.drop('Unnamed: 0', axis=1)   
 
         moments_data.columns = moments_sorted.columns
 
-
-
-        age         = np.arange(18, 65) # PROBABLY SHOULD GET RID OF AGE MAGIC NUMBERS HERE 
+        age = np.arange(18, 65) # PROBABLY SHOULD GET RID OF AGE MAGIC NUMBERS HERE 
 
         plot_keys_vars  = [ 'mean_account_type',
                             'corr_super_balance_risky_share_adj_DC',
                             'corr_super_balance_risky_share_adj_DB',
-                            'corr_super_balance_risky_share_DC',
-                            'corr_super_balance_risky_share_DB',
+                            'corr_super_balance_risk_share_DC',
+                            'corr_super_balance_risk_share_DB',
                             'corr_super_balance_vol_cont_adj_DC',
                             'corr_super_balance_vol_cont_adj_DB',
                             'corr_vol_total_super_balance_DC',
                             'corr_vol_total_super_balance_DB',
                             'corr_consumption_wealth_real',
-                            'sd_risky_shareDC',
-                            'sd_risky_shareDB',
+                            'sd_risk_shareDC',
+                            'sd_risk_shareDB',
                             'sd_vol_totalDC',
                             'sd_vol_totalDB',
                             'sd_super_balanceDC',
                             'sd_super_balanceDB',
                             'sd_wealth_real',
                             'sd_wealth_fin',
-                            'mean_risky_share',
+                            'mean_risk_share',
                             'mean_vol_cont_adj',
                             'mean_vol_total',
                             'mean_vol_cont_c',
@@ -1248,9 +1244,6 @@ if __name__ == '__main__':
                             'mean_super_balance',
                             'mean_consumption', 
                             'sd_consumption']
-
-
-
 
         plot_autocors = ['wealth_real_autocorr',
                             'wealth_fin_autocorr',
@@ -1273,9 +1266,9 @@ if __name__ == '__main__':
                             'sd_consumption':(0,150),
         # varibales with y axis 0 -1(risky share and vol cont)
                             'mean_vol_cont_adj':(0,1),
-                            'mean_risky_share':(0,1),
-                            'sd_risky_shareDC':(0,1),
-                            'sd_risky_shareDB':(0,1),
+                            'mean_risk_share':(0,1),
+                            'sd_risk_shareDC':(0,1),
+                            'sd_risk_shareDB':(0,1),
                             'sd_vol_totalDC':(0,15),
                             'sd_vol_totalDB':(0,15),
                             'mean_vol_total': (0,15),
@@ -1283,8 +1276,8 @@ if __name__ == '__main__':
         # varibales with y axis -.5 to 1(correlations)
                             'corr_super_balance_risky_share_adj_DC':(-.8,1),
                             'corr_super_balance_risky_share_adj_DB':(-.8,1),
-                            'corr_super_balance_risky_share_DC':(-.8,1),
-                            'corr_super_balance_risky_share_DB':(-.8,1),
+                            'corr_super_balance_risk_share_DC':(-.8,1),
+                            'corr_super_balance_risk_share_DB':(-.8,1),
                             'corr_super_balance_vol_cont_adj_DC':(-.8,1),
                             'corr_super_balance_vol_cont_adj_DB':(-.8,1),
                             'corr_vol_total_super_balance_DC':(-.8,1),
@@ -1305,9 +1298,9 @@ if __name__ == '__main__':
                             'sd_consumption': 'SD: Consumption',
         # varibales with y axis 0 -1(risky share and vol cont)
                             'mean_vol_cont_adj':'Share of positive voluntary contribution',
-                            'mean_risky_share': 'Share of Unisuper balance in risky assets',
-                            'sd_risky_shareDC': 'SD: Share of Unisuper balance in risky assets among DCer',
-                            'sd_risky_shareDB': 'SD: Share of Unisuper balance in risky assets among DBer',
+                            'mean_risk_share': 'Share of Unisuper balance in risk assets',
+                            'sd_risk_shareDC': 'SD: Share of Unisuper balance in risk assets among DCer',
+                            'sd_risk_shareDB': 'SD: Share of Unisuper balance in risk assets among DBer',
                             'sd_vol_totalDC':'SD: total voluntary contribution among DCer',
                             'sd_vol_totalDB':'SD: total voluntary contribution among DBer',
                             'mean_vol_total': 'Total voluntary contribution',
@@ -1315,8 +1308,8 @@ if __name__ == '__main__':
         # varibales with y axis -.5 to 1(correlations)
                             'corr_super_balance_risky_share_adj_DC':'CORR: UniSuper balane and non−default inv among DCer',
                             'corr_super_balance_risky_share_adj_DB':'CORR: UniSuper balane and non−default inv among DBer',
-                            'corr_super_balance_risky_share_DC':'CORR: UniSuper balane and risky share among DCer',
-                            'corr_super_balance_risky_share_DB':'CORR: UniSuper balane and risky share among DCer',
+                            'corr_super_balance_risk_share_DC':'CORR: UniSuper balane and risky share among DCer',
+                            'corr_super_balance_risk_share_DB':'CORR: UniSuper balane and risky share among DCer',
                             'corr_super_balance_vol_cont_adj_DC':'CORR: UniSuper balane and +vc among DCer',
                             'corr_super_balance_vol_cont_adj_DB':'CORR: UniSuper balane and +vc among DBer',
                             'corr_vol_total_super_balance_DC':'CORR: UniSuper balane and vc among DCer',
@@ -1325,7 +1318,6 @@ if __name__ == '__main__':
 
 
         #excludes   = set(['account_type_all'])
-
         cohort_labels = pd.DataFrame(list(["<25",
                         "25-29",
                         "30-34",
@@ -1346,7 +1338,6 @@ if __name__ == '__main__':
             var_data.iloc[8,2] = float('nan')
             var_data.iloc[8,3] =float('nan')  
 
-
             var_sim = moments_sorted[[key+'_wave10_male',key+'_wave10_female',key+'_wave14_male',key+'_wave14_female']]
             var_sim = var_sim.add_suffix('_sim')
             var_sim.iloc[8,2] = float('nan')
@@ -1354,7 +1345,6 @@ if __name__ == '__main__':
 
 
             var_grouped = pd.concat([cohort_labels, var_data, var_sim], axis =1)
-            
      
             ylim = axis_style_list_ylim[key]
 
