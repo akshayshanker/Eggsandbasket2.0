@@ -56,6 +56,7 @@ def genprofiles_operator(og,
     adj_p, adj_v, adj_pi = og.functions.adj_p, og.functions.adj_v,\
         og.functions.adj_pi
     amort_rate = og.functions.amort_rate
+    ch_ser = og.functions.ch_ser
     # Parameters
     s = og.parameters.s
     delta_housing = og.parameters.delta_housing
@@ -63,16 +64,15 @@ def genprofiles_operator(og,
     def_pi = og.parameters.def_pi
     beta_bar = og.parameters.beta_bar
     alpha_bar = og.parameters.alpha_bar
-    r_H = og.parameters.r_H
-    r_l = og.parameters.r_l
     beta_m = og.parameters.beta_m
     kappa_m = og.parameters.kappa_m
+    r_l = og.parameters.r_l
     r_m = beta_m*r_l
     sigma_plan = og.parameters.sigma_plan
 
     # Grid parameters
     DC_max = og.parameters.DC_max
-    C_min, C_max = og.parameters.C_min, og.parameters.C_max
+    C_min, C_max = og.parameters.C_min, 1
     Q_max, A_min = og.parameters.Q_max, og.parameters.A_min
     H_min, H_max = og.parameters.H_min, og.parameters.H_max
     A_max_W = og.parameters.A_max_W
@@ -81,7 +81,6 @@ def genprofiles_operator(og,
     v_S, v_E = og.parameters.v_S, og.parameters.v_E
     r, r_l, r_H = og.parameters.r, og.parameters.r_l, og.parameters.r_H
     r_h = og.parameters.r_h
-    beta_m, kappa_m = og.parameters.beta_m, og.parameters.kappa_m
     beta_m, kappa_m = og.parameters.beta_m, og.parameters.kappa_m
     k = og.parameters.k
     phi_d = og.parameters.phi_d
@@ -154,7 +153,11 @@ def genprofiles_operator(og,
         prob_V_vals[:] = eval_linear(X_cont_W,\
                                  prob_v_func,\
                                  points, xto.LINEAR) 
-        prob_V_vals[np.isnan(prob_V_vals)] = 0
+
+        prob_V_vals[np.isnan(prob_V_vals)] = 0.02
+        #prob_V_vals[np.where(prob_V_vals<.01)] = .01
+        #prob_V_vals[np.where(prob_V_vals>.99)] = .99
+
         prob_v = prob_V_vals/np.sum(prob_V_vals)
 
         # Pick a random draw for the voluntary contribution (index in the vol.cont grid)
@@ -164,7 +167,12 @@ def genprofiles_operator(og,
         prob_pi_func = policy_prob_pi[Age][account_ind,E_ind,alpha_ind,beta_ind,V_ind,:]
         prob_pi_vals = np.empty(len(Pi))
         prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points,  xto.LINEAR) 
+
+        prob_pi_vals[np.isnan(prob_pi_vals)] = 0.02
+        #prob_pi_vals[np.where(prob_pi_vals<.01)] = .01
+        #prob_pi_vals[np.where(prob_pi_vals>.99)] = .99
         prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
+
         Pi_ind  = np.arange(len(Pi))\
                     [np.searchsorted(np.cumsum(prob_Pi), pi_ushock)]
         pi = Pi[Pi_ind]
@@ -222,7 +230,6 @@ def genprofiles_operator(og,
         for t in np.arange(tzero, len(P_h)-1):
             P_h[t+1] = (1+r_H)*P_h[t]  
 
-        #print(P_h)
         # Initialize continuous points 
         TS_A  = A_min
         TS_H  = H_min
@@ -235,39 +242,30 @@ def genprofiles_operator(og,
         E_ind  = int(W[tzero])
         beta_ind = int(beta_hat_ts[tzero])
         alpha_ind = int(alpha_hat_ts[tzero])
-        points_plan_choice = np.array([TS_A,TS_DC,TS_H, P_h[tzero], TS_M])
-
-        #print(points_plan_choice)
+        points_plan_choice = np.array([TS_A,TS_DC,TS_H, .6 +.4*P_h[tzero], TS_M])
         
         vdcfunc = policy_VF[1,E_ind,alpha_ind,beta_ind,0,:]
         vdbfunc = policy_VF[0,E_ind,alpha_ind,beta_ind,0,:]
-        #print(vdcfunc.shape)
-
         V_DC = eval_linear(X_cont_W, \
                             vdcfunc,\
                             points_plan_choice)
         V_DB = eval_linear(X_cont_W, \
                             vdbfunc, \
                             points_plan_choice)
-        #print(V_DC)
 
-
-        V_DC_scaled = ((V_DC - adj_p(tzero))/sigma_plan)\
-                         - max(((V_DC - adj_p(tzero))/sigma_plan), ((V_DB/sigma_plan)))
+        V_DC_scaled = ((V_DC - adj_p(age))/sigma_plan)\
+                         - max(((V_DC - adj_p(age))/sigma_plan), ((V_DB/sigma_plan)))
         V_DB_scaled = ((V_DB/sigma_plan)) \
-                         - max(((V_DC - adj_p(tzero))/sigma_plan), ((V_DB/sigma_plan)))
+                         - max(((V_DC - adj_p(age))/sigma_plan), ((V_DB/sigma_plan)))
 
         Prob_DC = np.exp(V_DC_scaled)/(np.exp(V_DB_scaled)\
                         +   np.exp(V_DC_scaled ) )    
 
 
-        Prob_DC = np.float64(min(max(0.1, Prob_DC), 0.9))
-        #print(Prob_DC)
+        Prob_DC = np.float64(min(max(0.15, Prob_DC), 0.5))
         account_ind = np.searchsorted(np.cumsum(np.array([1-Prob_DC,\
                                                              Prob_DC])),\
                                                             DBshock)
-
-        #account_ind = 1
 
         for t in range(int(tzero), int(length)+1):
             if t<R:
@@ -322,8 +320,6 @@ def genprofiles_operator(og,
                                                     V_ind,
                                                     Pi_ind,:]
 
-                #print(zeta_func.shape)
-
                 zeta_val = eval_linear(X_cont_W,zeta_func,\
                                           points, xto.LINEAR) 
 
@@ -343,7 +339,7 @@ def genprofiles_operator(og,
 
                 # Calculate if renter 
                 renter = zeta_val > 0 
-                can_rent = wealth_rent>A_min
+                can_rent = wealth_rent > A_min
                 renter1 = int(renter)*int(can_rent)
 
                 if renter1>0:
@@ -354,14 +350,13 @@ def genprofiles_operator(og,
                                                     beta_ind,\
                                                     Pi_ind,:]
 
-                    #print(h_rent_func.shape)  
                     hs_points = np.array([wealth_rent,DC_prime, q])
                     H_services = max(H_min, eval_linear(X_QH_WRTS, h_rent_func, hs_points,  xto.LINEAR))
 
-                    TS_C = phi_r*H_services*(1-alpha_val)/alpha_val
-                    #print(alpha_val)
+                    #TS_C = phi_r*q*H_services*(1-alpha_val)/alpha_val
+                    TS_C = ch_ser(H_services, alpha_val, phi_r*q)
                     TS_M_1 = 0
-                    TS_A_1 = min(max(A_min,wealth_rent - phi_r*H_services - TS_C), A_max_W)
+                    TS_A_1 = min(max(A_min,wealth_rent - phi_r*q*H_services - TS_C), A_max_W)
                     TS_H_1 = H_min
 
                 elif eta_val<0 or wealth_adj<A_min:
@@ -412,13 +407,13 @@ def genprofiles_operator(og,
 
                     TS_C = min(max(C_min,eval_linear(X_QH_W_TS,\
                                                 c_prime_adj_func,\
-                                                adj_points,  xto)), C_max)
+                                                adj_points,  xto.LINEAR)), C_max)
                     TS_H_1 = min(max(H_min, eval_linear(X_QH_W_TS,\
                                                     H_adj_func,\
-                                                    adj_points,  xto)), H_max)
+                                                    adj_points,  xto.LINEAR)), H_max)
                     TS_A_1 = min(max(A_min, eval_linear(X_QH_W_TS,\
                                                     a_prime_adj_func,\
-                                                    adj_points, xto)), A_max_W)
+                                                    adj_points, xto.LINEAR)), A_max_W)
                     #print(TS_A_1)
 
                     extra_payment = wealth_adj - TS_A_1 - TS_C \
@@ -807,7 +802,8 @@ def gen_moments(TSALL_10_df, TSALL_14_df):
     # Adjust age so it is 'real age'=
     main_df['Age'] += 1    
 
-    #Means
+    #div
+
     means = main_df.groupby(pd.cut(main_df['Age'], age_buckets)).mean().add_prefix('mean_')  
     means = means.reset_index() 
 
@@ -1164,57 +1160,66 @@ if __name__ == '__main__':
             axes[1].legend(loc='upper left', ncol=2)
             #plt.tight_layout()
             #figure.size(10,10)
-            figure.savefig("{}/{}.png".format(sim_id,col2), transparent=True)
+            figure.savefig("plots/{}/{}.png".format(sim_id,col2), transparent=True)
            
 
         # Read settings
+        # Make sure the og class has the parameters consistent with the policy that is being loaded!
         with open("settings/settings.yml", "r") as stream:
             eggbasket_config = yaml.safe_load(stream)
+       
+        # Get best male moments
+        model_name = 'final_male_v1'
 
+        top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
+        params = pickle.load(open("/scratch/pv33/ls_model_temp/{}/{}_acc_0/params.smms".format(model_name, top_id),"rb"))
+        param_dict = eggbasket_config['male']
+        param_dict['parameters'] = params
 
-        og = lifecycle_model.LifeCycleModel(eggbasket_config['baseline_lite'],
-                        np.array([0]), param_id = 'test', mod_name = 'test')
-
-        model_name = 'test'
-        #og.ID = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
-        og.ID = '85CXRS_20210331-181817_test'
-        
+        og = lifecycle_model.LifeCycleModel(param_dict,
+                        np.array([0]), param_id = top_id, mod_name = model_name)
         settings_folder = 'settings/'
-        
-
-        generate_TSDF,load_pol_array = genprofiles_operator(og)
+        #generate_TSDF,load_pol_array = genprofiles_operator(og)
 
         # generate random numbers for the simulation
-        # generate TS
-
-        TSN = 100
+        TSN = 350
         U = np.random.rand(6,100,TSN,100) 
 
         TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
-
         moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
+        
 
-        moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
+        # Get best female moments
+        model_name = 'final_female_v1'
+
+        top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
+        params = pickle.load(open("/scratch/pv33/ls_model_temp/{}/{}_acc_0/params.smms".format(model_name, top_id),"rb"))
+        param_dict = eggbasket_config['female']
+        param_dict['parameters'] = params
+
+        og = lifecycle_model.LifeCycleModel(param_dict,
+                        np.array([0]), param_id = top_id, mod_name = model_name)
+        settings_folder = 'settings/'
+        #generate_TSDF,load_pol_array = genprofiles_operator(og)
+
+        # generate random numbers for the simulation
+        TSN = 350
+        U = np.random.rand(6,100,TSN,100) 
+
+        TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
+        moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female') 
+          
 
         os.chdir('/home/141/as3442/Eggsandbaskets/eggsandbaskets')  
-        
         moments_male.to_csv("/scratch/pv33/moments_male.csv") 
         moments_female.to_csv("/scratch/pv33/moments_female.csv") 
-
         moments_sorted  = sortmoments(moments_male, moments_female)
-
-        moments_sorted.to_csv("{}/moments_sorted.csv".format(model_name))  
-
+        #moments_sorted.to_csv("plots/{}/moments_sorted.csv".format(model_name))  
         moments_sorted = pd.concat([moments_male["Age_wave10_male"].reset_index().iloc[:,1], moments_sorted], axis =1)  
-
         moments_sorted = moments_sorted.rename(columns = {'Age_wave10_male':'Age_wave10'})
-        
         moments_data = pd.read_csv('{}moments_data.csv'\
                     .format(settings_folder))
-        #moments_data = moments_data.drop('Unnamed: 0', axis=1)   
-
         moments_data.columns = moments_sorted.columns
-
         age = np.arange(18, 65) # PROBABLY SHOULD GET RID OF AGE MAGIC NUMBERS HERE 
 
         plot_keys_vars  = [ 'mean_account_type',
@@ -1248,7 +1253,6 @@ if __name__ == '__main__':
         plot_autocors = ['wealth_real_autocorr',
                             'wealth_fin_autocorr',
                             'consumption_autocorr']
-        
 
         # variables with y axis 0:1000
         # real wealth, fin wealth super balance

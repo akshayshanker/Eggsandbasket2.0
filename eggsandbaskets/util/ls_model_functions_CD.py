@@ -5,8 +5,6 @@
 import numpy as np
 
 from quantecon import tauchen
-from quantecon.optimize.root_finding import brentq
-
 
 import matplotlib.pyplot as plt
 from itertools import product
@@ -40,9 +38,6 @@ def lsmodel_function_factory(parameters,
 	R             = parameters['R']
 	T             = parameters['T']
 	r_m           = parameters['r_l']*parameters['beta_m']
-	H_min = parameters['H_min']
-	C_min = parameters['H_min']
-	H_max = parameters['H_max']
 
 	# adjustment cost parameters 
 
@@ -61,43 +56,39 @@ def lsmodel_function_factory(parameters,
 	psi_adj         =        parameters['psi']
 
 	@njit
-	def u(c,s,alpha):
-	    U = (((1-alpha)*(c**rho) + alpha*(s**rho))**((1-gamma)/rho) - 1)/(1-gamma) 
-	    return U #Verified
+	def u(c,h, alpha_housing):
+		"The utility function"
+		#if c>0 and h>0:
+		return ((c**((1-gamma)*(1-alpha_housing)))*(h**(alpha_housing*(1-gamma)))-1)/(1-gamma)
+		#else:
+		#	return -np.inf
 
 	@njit(error_model="numpy") 
-	def uc(c,s, alpha):
+	def uc(c,h, alpha):
 		"Derivative of utility function wrt to consumption"
 
-		return ((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1)
+		return (1-alpha)*(c**(gamma*(alpha-1) - alpha))*(h**(alpha*(1-gamma)))
 
 	@njit(error_model="numpy") 
-	def ucnz(c,s, alpha):
+	def ucnz(c,h, alpha):
 		"Derivative of utility function wrt to consumption"
 
-		return max(1e-200,((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1))
+		return max(1e-100,(1-alpha)*(c**(gamma*(alpha-1) - alpha)))*max(1e-100,(h**(alpha*(1-gamma))))
 
 	#@njit
-	def uc_vec(c,s, alpha):
-		U_cvec = ((1-alpha)*(np.power(c,(rho-1))))\
-    			*np.power(((1-alpha)*np.power(c,rho) + alpha*np.power(s,rho)),(((1-gamma)/rho)-1))
+	def uc_vec(c,h, alpha):
 
-		return U_cvec
+		return (1-alpha)*(np.power(c,(gamma*(alpha-1) - alpha)))*(np.power(h,(alpha*(1-gamma)))) 
 
 	#@njit
-	def u_vec(c,s, alpha):
+	def u_vec(c,h, alpha):
 
-		return  (np.power(((1-alpha)*np.power(c,rho) + alpha*np.power(s,rho)),((1-gamma)/rho)) - 1)/(1-gamma) 
+		return ((np.power(c,((1-gamma)*(1-alpha)))*(np.power(h,(alpha*(1-gamma)))))-1)/(1-gamma) 
 	
 	@njit(error_model="numpy") 
-	def uh(c,s, alpha):
+	def uh(c,h, alpha):
 		"Derivative of utility function wrt to housing"
-		return max(1e-200,(alpha*s**(rho-1))*(((1-alpha)*(c**rho) + (alpha*s**rho)))**(((1-gamma)/rho) - 1))
-
-	@njit
-	def ces_c1(c,s,alpha,uc):
-	    U_c1 = (((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1)) - uc
-	    return U_c1  #Semi-Verified
+		return max(1e-100,alpha*(c**((1-alpha)*(1-gamma))))*max(1e-100,(h**(alpha*(1-gamma)-1)))
 
 	@njit(error_model="numpy") 
 	def uc_inv(uc, h, alpha):
@@ -107,7 +98,6 @@ def lsmodel_function_factory(parameters,
 		exp_uc = 1/(gamma*(alpha-1)-alpha)
 		return max(1e-100,((uc/(1-alpha))**(exp_uc)))*max(1e-100,(h**exp_h))
 
-
 	@njit(error_model="numpy") 
 	def uh_inv(uc, h, alpha):
 		"Inverse of MUH holding current period housing fixed"
@@ -116,12 +106,13 @@ def lsmodel_function_factory(parameters,
 		exp_uc = 1/(1-alpha)*(1-gamma)
 		return max((uc/alpha)**(exp_uc), 1e-100)*max(h**exp_h, 1e-100)
 	
+	
 	@njit
 	def b(A):
 
 		"Bequest function"
 		return normalisation[0]*(theta*(np.power(k+A,(1-gamma)))/(1-gamma))
-	@njit 
+	@njit
 	def b_prime(A):
 		"Derivative of bequest function"
 		return  normalisation[0]*theta*((k + A)**(-gamma))
@@ -214,6 +205,6 @@ def lsmodel_function_factory(parameters,
 	@njit 
 	def ch_ser(h, alpha, P_r):
 		"""Housing services as a functiin of consumption"""
-		return  h*np.power((alpha/(P_r*(1-alpha))),(1/(rho-1)))
+		return h*np.power((alpha/(P_r*(1-alpha))),(1/(rho-1)))
 
-	return u, uc, uh, b, b_prime, y,yvec, DB_benefit, adj_p, adj_v, adj_pi, uc_inv, uh_inv, amort_rate, u_vec, uc_vec,housing_ser, ch_ser, ucnz, ces_c1
+	return u, uc, uh, b, b_prime, y,yvec, DB_benefit, adj_p, adj_v, adj_pi, uc_inv, uh_inv, amort_rate, u_vec, uc_vec,housing_ser, ch_ser, ucnz

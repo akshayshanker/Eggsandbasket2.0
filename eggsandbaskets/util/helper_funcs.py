@@ -35,7 +35,7 @@ def gen_policyout_arrays(og):
     V, Pi, DB                       = og.grid1d.V, og.grid1d.Pi, og.grid1d.DB
 
     
-    all_state_shape                 = (len(DB),grid_size_W,\
+    all_state_shape                 = (1,grid_size_W,\
                                          grid_size_alpha,\
                                          grid_size_beta,\
                                          len(Pi),\
@@ -45,7 +45,7 @@ def gen_policyout_arrays(og):
                                          grid_size_Q,\
                                          grid_size_M)
 
-    all_state_shape_hat             = (len(DB),grid_size_W,\
+    all_state_shape_hat             = (1,grid_size_W,\
                                         grid_size_alpha,\
                                         grid_size_beta,\
                                         len(V),\
@@ -56,7 +56,7 @@ def gen_policyout_arrays(og):
                                         grid_size_Q,\
                                         grid_size_M)
 
-    v_func_shape                    = (int(len(DB)*grid_size_W\
+    v_func_shape                    = (int(1*grid_size_W\
                                          *grid_size_alpha\
                                          *grid_size_beta\
                                          *len(Pi)*grid_size_Q),\
@@ -65,7 +65,7 @@ def gen_policyout_arrays(og):
                                          grid_size_H,\
                                          grid_size_M)
 
-    all_state_A_last_shape          = (len(DB),grid_size_W,\
+    all_state_A_last_shape          = (1,grid_size_W,\
                                          grid_size_alpha,\
                                          grid_size_beta,\
                                          len(Pi),\
@@ -76,20 +76,20 @@ def gen_policyout_arrays(og):
                                          grid_size_A)
 
 
-    policy_shape_nadj = (int(R)-int(tzero), len(DB), grid_size_W, grid_size_alpha,\
+    policy_shape_nadj = (int(R)-int(tzero), 1, grid_size_W, grid_size_alpha,\
                             grid_size_beta, len(Pi),\
                             grid_size_A,grid_size_DC,\
                             grid_size_H, grid_size_Q,\
                             grid_size_M)
 
-    policy_shape_adj = (int(R)-int(tzero), len(DB), grid_size_W, grid_size_alpha,\
+    policy_shape_adj = (int(R)-int(tzero), 1, grid_size_W, grid_size_alpha,\
                             grid_size_beta, len(Pi),\
                             grid_size_DC,\
                             grid_size_Q,\
                             grid_size_M,\
                             grid_size_A)
 
-    policy_shape_rent = (int(R)-int(tzero),len(DB),
+    policy_shape_rent = (int(R)-int(tzero),1,
                                 grid_size_W,
                                 grid_size_alpha,
                                 grid_size_beta,
@@ -100,7 +100,7 @@ def gen_policyout_arrays(og):
                                 )
 
 
-    prob_v_shape = (int(len(DB)), grid_size_W,
+    prob_v_shape = (int(1), grid_size_W,
                         grid_size_alpha,
                         grid_size_beta,
                         grid_size_A,
@@ -110,7 +110,7 @@ def gen_policyout_arrays(og):
                         grid_size_M,
                         len(V))
 
-    prob_pi_shape = (int(len(DB)), grid_size_W,
+    prob_pi_shape = (int(1), grid_size_W,
                           grid_size_alpha,
                           grid_size_beta,
                           len(V),
@@ -218,7 +218,7 @@ def dot_py(A,B):
                 C[i,j] += A[i,k]*B[k,j] 
     return C
 
-@njit(parallel=True, nogil= True)
+@njit
 def einsum_row(A,B):
     out = np.empty(len(A))
     for i in prange(len(A)):
@@ -260,7 +260,7 @@ def gen_reshape_funcs(og):
         as cols and cart product of all other states as rows
         """
 
-        UC_in = UC_in.reshape((len(DB), grid_size_W,\
+        UC_in = UC_in.reshape((1, grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
                                              len(V),\
@@ -275,7 +275,7 @@ def gen_reshape_funcs(og):
 
         UC_in         = np.transpose(UC_in, (0,1,2,3,4,6,7,8,9,10,5) )
 
-        UC_in          = UC_in.reshape(int(len(DB)*grid_size_W*\
+        UC_in          = UC_in.reshape(int(1*grid_size_W*\
                                              grid_size_alpha*\
                                              grid_size_beta*\
                                              len(V)*\
@@ -294,7 +294,7 @@ def gen_reshape_funcs(og):
         as coloumns and all other states as rows
         """
 
-        UC_in = UC_in.reshape((len(DB), grid_size_W,\
+        UC_in = UC_in.reshape((1, grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
                                              len(V),\
@@ -307,7 +307,7 @@ def gen_reshape_funcs(og):
         
         UC_in         = np.transpose(UC_in, (0,1,2,3,5,6,7,8,9,4) )
 
-        UC_in          = UC_in.reshape(int(len(DB)*grid_size_W*\
+        UC_in          = UC_in.reshape(int(1*grid_size_W*\
                                              grid_size_alpha*\
                                              grid_size_beta*\
                                              grid_size_A*\
@@ -328,7 +328,7 @@ def gen_reshape_funcs(og):
         to time t-1  E, Alpha and Beta 
         """
 
-        UC_in = UC_in.reshape((len(DB), grid_size_W,\
+        UC_in = UC_in.reshape((1, grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
                                              grid_size_A,\
@@ -343,7 +343,7 @@ def gen_reshape_funcs(og):
         UC_in  = UC_in.reshape((int(grid_size_W*\
                                              grid_size_alpha*\
                                              grid_size_beta),\
-                                             int(len(DB)*grid_size_A*\
+                                             int(1*grid_size_A*\
                                              grid_size_DC*\
                                              grid_size_H*\
                                              grid_size_Q*grid_size_M)
@@ -354,7 +354,7 @@ def gen_reshape_funcs(og):
         U_condE = U_condE.reshape((grid_size_W,\
                                              grid_size_alpha,\
                                              grid_size_beta,\
-                                             len(DB),grid_size_A,\
+                                             1,grid_size_A,\
                                              grid_size_DC,\
                                              grid_size_H,\
                                              grid_size_Q,\
@@ -368,7 +368,7 @@ def gen_reshape_funcs(og):
     @njit
     def reshape_make_Apfunc_last(UC):
 
-        UC_R1     = UC.reshape((len(DB), grid_size_W,\
+        UC_R1     = UC.reshape((1, grid_size_W,\
                          grid_size_alpha, grid_size_beta,\
                          len(Pi), grid_size_A,\
                          grid_size_DC,\
@@ -385,7 +385,7 @@ def gen_reshape_funcs(og):
         
     @njit
     def reshape_make_h_last(A_prime):
-        A_prime_adj_reshape1     = A_prime.reshape((len(DB), grid_size_W,\
+        A_prime_adj_reshape1     = A_prime.reshape((1, grid_size_W,\
                                     grid_size_alpha, grid_size_beta,\
                                     len(Pi), grid_size_DC, grid_size_HS,\
                                     grid_size_Q,grid_size_M))
@@ -481,8 +481,8 @@ def gen_reshape_funcs(og):
     def reshape_RHS_UFB(UF_FUNC):
 
         UF_FUNC = UF_FUNC.reshape(all_state_shape_hat)
-        UF_FUNC = UF_FUNC.transpose((0,1,2,3,5,9,4,6,7,8,10))
-        UF_FUNC = UF_FUNC.reshape((int(len(DB)*grid_size_W\
+        UF_FUNC = UF_FUNC.transpose((0,1,2,3,4,9,5,6,7,8,10))
+        UF_FUNC = UF_FUNC.reshape((int(1*grid_size_W\
                                                         *grid_size_alpha\
                                                         *grid_size_beta\
                                                         *len(Pi)*grid_size_Q),\
@@ -499,7 +499,7 @@ def gen_reshape_funcs(og):
         from the t+1 value function back to the order
         of X_all_ind"""
 
-        Xifunc  = Xifunc.reshape((len(DB),\
+        Xifunc  = Xifunc.reshape((1,\
                                                 grid_size_W,\
                                                 grid_size_alpha,\
                                                 grid_size_beta,\
@@ -511,11 +511,10 @@ def gen_reshape_funcs(og):
                                                 grid_size_M))
 
         # change order so Pi, V are consecutive and Q, M are consec
-        Xifunc = Xifunc.transpose((0,1,2,3,4,6,7,8,9,5,10))
+        Xifunc = Xifunc.transpose((0,1,2,3,6,4,7,8,9,5,10))
 
         # unravel array 
-        Xifunc = Xifunc.reshape(int(len(DB)\
-                                                *grid_size_W\
+        Xifunc = Xifunc.reshape(int(1*grid_size_W\
                                                 *grid_size_alpha\
                                                 *grid_size_beta\
                                                 *len(Pi)*grid_size_Q*\

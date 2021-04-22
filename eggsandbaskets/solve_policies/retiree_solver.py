@@ -45,12 +45,12 @@ def retiree_func_factory(og):
     """
 
     # Functions
-    u, uc, uh,uc_inv, uh_inv        = og.functions.u, og.functions.uc, og.functions.uh, og.functions.uc_inv,\
-                                        og.functions.uh_inv
-    b, b_prime                      = og.functions.b, og.functions.b_prime 
-    y, DB_benefit                   = og.functions.y, og.functions.DB_benefit
-    adj_p, adj_v,adj_pi             = og.functions.adj_p, og.functions.adj_v, og.functions.adj_pi
-    amort_rate                      = og.functions.amort_rate
+    u, uc, uh,uc_inv, uh_inv        = og.functions_CD.u, og.functions_CD.uc, og.functions_CD.uh, og.functions_CD.uc_inv,\
+                                        og.functions_CD.uh_inv
+    b, b_prime                      = og.functions_CD.b, og.functions_CD.b_prime 
+    y, DB_benefit                   = og.functions_CD.y, og.functions_CD.DB_benefit
+    adj_p, adj_v,adj_pi             = og.functions_CD.adj_p, og.functions_CD.adj_v, og.functions_CD.adj_pi
+    amort_rate                      = og.functions_CD.amort_rate
    
     # Parameters
     k                               = og.parameters.k
@@ -80,6 +80,8 @@ def retiree_func_factory(og):
     H_min, A_max_R                  = og.parameters.A_min, og.parameters.C_min, og.parameters.C_max,\
                                          og.parameters.H_min, og.parameters.A_max_R
     H_max                           = og.parameters.H_max
+    C_max                           = og.parameters.C_max
+    C_min                           = og.parameters.C_min
 
     X_all_hat_ind                   = og.BigAssGrids.X_all_hat_ind_f().astype(np.int32)
 
@@ -142,7 +144,7 @@ def retiree_func_factory(og):
             h_x         = np.take(H_c[~np.isnan(wealthbar_c)],\
                                      np.argsort(wealth_x))
             #if i <6:
-                #print(h_x)
+            #print(h_x)
 
             wealth_x_sorted             = np.sort(np.copy(wealth_x))
             h_x[wealth_x_sorted<=A_min] = H_min
@@ -282,7 +284,7 @@ def retiree_func_factory(og):
         cons = np.zeros(len(H_Q))
 
         for i in prange(len(H_Q)):
-            cons[i] = brentq(rent_FOC, 1e-100, 100, args = (H_Q[i,0], H_Q[i,1]))[0]
+            cons[i] = brentq(rent_FOC, C_min, C_max, args = (H_Q[i,0], H_Q[i,1]))[0]
 
         #cons_out = cons.reshape(len(H),len(Q) )
 

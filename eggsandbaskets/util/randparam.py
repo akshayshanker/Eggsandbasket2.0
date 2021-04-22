@@ -39,12 +39,14 @@ def rand_p_generator(
 
         while in_range == False:
             draws = np.random.multivariate_normal(param_random_means, param_random_cov)
-
+            #print(draws)
             if np.sum(draws> random_param_bounds_ar[:,1]) + np.sum(draws<random_param_bounds_ar[:,0])==0:
                 in_range = True
+
                #print("in range")
             else:
                 pass
+
             for i,key in zip(np.arange(len(draws)),param_random_bounds.keys()):
                 parameters[key]  = draws[i]
 
