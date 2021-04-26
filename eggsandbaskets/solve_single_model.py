@@ -72,15 +72,15 @@ if __name__ == "__main__":
 			param_random_bounds[row['parameter']] = np.float64([row['LB'],\
 				row['UB']])
 
-	model_name = 'test_5'
+	model_name = 'final_male_v2'
 	top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
 	#top_id = 'AMWGWF_20210415-132028_test_3'
-	sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/test_5/latest_sampmom.smms","rb"))
+	sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/final_male_v2/latest_sampmom.smms","rb"))
 	#sampmom[0][9]= 2
 	#sampmom[0][2]= 250
 	#sampmom[0][21]= 1
 	#param_dict = pickle.load(open("/scratch/pv33/ls_model_temp/{}/{}_acc_0/params.smms".format(model_name, top_id),"rb")) 
-	param_dict = eggbasket_config['baseline_lite']
+	param_dict = eggbasket_config['male']
 
 	layer_1_comm, layer_2_comm, layer_ts_comm = gen_communicators(world,\
 													block_size_layer_1,\
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 	if layer_1_comm.rank == 0: 
 		cov_mat = np.zeros(np.shape(sampmom[1]))
 		LS_models =  lifecycle_model\
-						.LifeCycleParams('test_5', param_dict, random_draw = True, 
+						.LifeCycleParams('final_male_v2', param_dict, random_draw = True, 
 		                  random_bounds = param_random_bounds, # parameter bounds for randomly generated params
 		                  param_random_means = sampmom[0], # mean of random param distribution 
 		                  param_random_cov = cov_mat, 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
 	print("Rank {} on world is rank {} on layer 1 and rank {} on layer 2 and model ID is {}"\
 			.format(world_rank,layer_1_comm.rank, layer_2_comm.rank,LS_models.param_id))
 
-	pickle.dump(LS_models.param_id,open("/scratch/pv33/ls_model_temp/test_5/single_ID.smms","wb") )
+	pickle.dump(LS_models.param_id,open("/scratch/pv33/ls_model_temp/final_male_v2/single_ID.smms","wb") )
 
 	if layer_1_comm.rank == 0 or layer_1_comm.rank == 1 or layer_1_comm.rank == 2 or layer_1_comm.rank == 3 :
 		og  = LS_models.og_DB

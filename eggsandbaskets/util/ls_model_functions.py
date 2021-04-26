@@ -60,7 +60,7 @@ def lsmodel_function_factory(parameters,
 	nu_r_4          =        parameters['nu_r_4']
 	psi_adj         =        parameters['psi']
 
-	@njit
+	@njit(error_model="numpy")
 	def u(c,s,alpha):
 	    U = (((1-alpha)*(c**rho) + alpha*(s**rho))**((1-gamma)/rho) - 1)/(1-gamma) 
 	    return U #Verified
@@ -211,7 +211,7 @@ def lsmodel_function_factory(parameters,
 		return c*np.power((alpha/(P_r*(1-alpha))),(1/(1-rho)))
 		
 
-	@njit 
+	@njit(error_model="numpy")
 	def ch_ser(h, alpha, P_r):
 		"""Housing services as a functiin of consumption"""
 		return  h*np.power((alpha/(P_r*(1-alpha))),(1/(rho-1)))

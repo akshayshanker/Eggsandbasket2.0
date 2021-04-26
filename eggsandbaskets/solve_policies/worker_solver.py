@@ -149,10 +149,10 @@ def worker_solver_factory(og,
 	phi_d = og.parameters.phi_d
 	phi_c = og.parameters.phi_c
 	phi_r = og.parameters.phi_r
-	sigma_DC_V = og.parameters.sigma_DC_V
-	sigma_DB_V = og.parameters.sigma_DB_V
-	sigma_DC_pi = og.parameters.sigma_DC_pi
-	sigma_DB_pi = og.parameters.sigma_DB_pi
+	sigma_DC_V = np.exp(og.parameters.sigma_DC_V)
+	sigma_DB_V = np.exp(og.parameters.sigma_DB_V)
+	sigma_DC_pi = np.exp(og.parameters.sigma_DC_pi)
+	sigma_DB_pi = np.exp(og.parameters.sigma_DB_pi)
 
 	grid_size_A = og.parameters.grid_size_A
 	grid_size_DC = og.parameters.grid_size_DC
@@ -264,7 +264,7 @@ def worker_solver_factory(og,
 	gc.collect()
 
 
-	@njit
+	@njit(error_model="numpy")
 	def uc_inv(uc,s,alpha):
 	    args = (s,alpha,uc)
 	    if ces_c1(C_min,s, alpha, uc)<0:
@@ -312,7 +312,7 @@ def worker_solver_factory(og,
 		error = interp_as(M, UC_prime_func1D,np.array([m]))[0]- interp_as(M, UC_prime_M_func1D,np.array([m]))[0]
 		return error
 
-	@njit
+	@njit(error_model="numpy")
 	def liq_rent_FOC_W(cons, h, q, alpha_housing, UC_prime_func1D):
 		"""Solves frst order condition of liq. asset choice of renters
 			(equation x in paper)
@@ -665,7 +665,7 @@ def worker_solver_factory(og,
 
 		return mort_func
 
-	@njit
+	@njit(error_model="numpy")
 	def eval_rent_pol_W(UC_prime):
 		"""Creates renter policy function as function of wealth_t, q_t, dc_t+1
 		and exogenous states at t using endog grid method."""
@@ -1877,7 +1877,6 @@ def worker_solver_factory(og,
 
 	@njit
 	def gen_RHS_lambdas(t, VF,
-						Lambda,
 						UF_B,
 						points_p):
 		"""Generates RHS values of VF_t+1, Lambda_t+1 and Xi_t for renters and
@@ -1885,7 +1884,7 @@ def worker_solver_factory(og,
 
 		# Generate empty arrays to fill with evaluated values
 		Xi = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
-		Lambda_B = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
+		#Lambda_B = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
 		VF_B = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
 
 		# The list of vol contributions rates will be common across each
@@ -1936,9 +1935,9 @@ def worker_solver_factory(og,
 												VF[i],
 												points_p[i], xto.LINEAR)
 
-			lam_func_vals = beta_t * eval_linear(X_cont_W_bar,
-												 Lambda[i],
-												 points_p[i], xto.LINEAR)
+			#lam_func_vals = beta_t * eval_linear(X_cont_W_bar,
+			#									 Lambda[i],
+			#									 points_p[i], xto.LINEAR)
 
 			# check: should bequest value go here?
 			VF_B[i, :] = UF_B[i, :] + vf_func_vals
@@ -1953,20 +1952,18 @@ def worker_solver_factory(og,
 			#print(pi_ind)
 			#print(pi)
 			vol_cost = adj_v(t, X_V_func_DP_vals[:, 1]) * v_ind
-			Lambda_B[i, :] = lam_func_vals
-			Xi[i, :] = UF_B[i, :]\
-				+ Lambda_B[i, :] * points_p[i, :, 1]\
+			#Lambda_B[i, :] = lam_func_vals
+			Xi[i, :] = VF_B[i, :]\
 				- vol_cost\
 				- adj_pi(t, X_V_func_DP_vals[:, 2],
-						 adj_p(t))*pi_ind
+						 adj_p(17))*pi_ind
 
 			#print(vol_cost)
 
-		return Xi, Lambda_B, VF_B
+		return Xi, VF_B
 
 	def gen_RHS_UC_func(comm, t,
 						VF,
-						Lambda,
 						A_prime,
 						noadj_vals,
 						adj_vals,
@@ -2083,20 +2080,20 @@ def worker_solver_factory(og,
 			.transpose((0, 1, 2, 3, 4, 8, 5, 6, 7, 9))\
 			.reshape((v_func_shape))
 
-		Lambda = Lambda.reshape(all_state_shape)\
-			.transpose((0, 1, 2, 3, 4, 8, 5, 6, 7, 9))\
-			.reshape((v_func_shape))
+		#Lambda = Lambda.reshape(all_state_shape)\
+		#	.transpose((0, 1, 2, 3, 4, 8, 5, 6, 7, 9))\
+		#	.reshape((v_func_shape))
 
 		# Loop over all points of the states in  X_all_ind
 		# interpolate values of value function and
 		# Lambda function back to period t
 		if comm.rank == 0:
-			Xi_rent, Lambda_B_rent, VF_B_rent = gen_RHS_lambdas(t, VF, Lambda,
+			Xi_rent, VF_B_rent = gen_RHS_lambdas(t, VF,
 																reshape_RHS_UFB(
 																	u_prime_rent),
 																rent_points_p)
 			Xi_rent = reshape_RHS_Vfunc_rev(Xi_rent)
-			Lambda_B_rent = reshape_RHS_Vfunc_rev(Lambda_B_rent)
+			#Lambda_B_rent = reshape_RHS_Vfunc_rev(Lambda_B_rent)
 			VF_B_rent = reshape_RHS_Vfunc_rev(VF_B_rent)
 
 		if comm.rank == 1:
@@ -2119,25 +2116,25 @@ def worker_solver_factory(og,
 
 			comm.Recv(no_rent_points_p, source=0, tag=222)
 			comm.Recv(u_prime_norent, source=0, tag=221)
-			Xi_norent, Lambda_B_norent, VF_B_norent = gen_RHS_lambdas(t, VF, Lambda,
+			Xi_norent, VF_B_norent = gen_RHS_lambdas(t, VF,
 																	  reshape_RHS_UFB(
 																		  u_prime_norent),
 																	  no_rent_points_p)
 			Xi_norent = reshape_RHS_Vfunc_rev(Xi_norent)
-			Lambda_B_norent = reshape_RHS_Vfunc_rev(Lambda_B_norent)
+			#Lambda_B_norent = reshape_RHS_Vfunc_rev(Lambda_B_norent)
 			VF_B_norent = reshape_RHS_Vfunc_rev(VF_B_norent)
 			comm.Send(Xi_norent, dest=0, tag = 999)
-			comm.Send(Lambda_B_norent, dest=0, tag = 997)
+			#comm.Send(Lambda_B_norent, dest=0, tag = 997)
 			comm.Send(VF_B_norent, dest=0, tag = 996)
 		
 		if comm.rank == 0:
 
 			Xi_norent = np.empty(np.shape(Xi_rent))
-			Lambda_B_norent = np.empty(np.shape(Lambda_B_rent))
+			#Lambda_B_norent = np.empty(np.shape(Lambda_B_rent))
 			VF_B_norent = np.empty(np.shape(VF_B_rent))
 
 			comm.Recv(Xi_norent, source=1, tag=999)
-			comm.Recv(Lambda_B_norent, source=1, tag=997)
+			#comm.Recv(Lambda_B_norent, source=1, tag=997)
 			comm.Recv(VF_B_norent, source=1, tag=996)
 
 			UF_B_norent = u_prime_norent
@@ -2186,18 +2183,18 @@ def worker_solver_factory(og,
 			# Return RHS value function, period utility
 			# function and Lambda function values state by state
 			# Xi function is the period utility + Lambda - adjustment cost
-			Lambda_B = renter_ind * Lambda_B_rent \
-				+ (1 - renter_ind) * Lambda_B_norent
+			#Lambda_B = renter_ind * Lambda_B_rent \
+			#	+ (1 - renter_ind) * Lambda_B_norent
 			VF_B = renter_ind * VF_B_rent\
 				+ (1 - renter_ind) * VF_B_norent
 			Xi = renter_ind * Xi_rent\
 				+ (1 - renter_ind) * Xi_norent
 			UF_B = renter_ind * UF_B_rent\
 				+ (1 - renter_ind) * UF_B_norent
-			del Lambda_B_rent, Lambda_B_norent, VF_B_norent, VF_B_rent, Xi_norent, UF_B_norent
+			del VF_B_norent, VF_B_rent, Xi_norent, UF_B_norent
 			gc.collect()
 			return UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
-				Lambda_B, VF_B, Xi, UF_B, zeta.astype(np.float32).reshape(all_state_shape_hat)
+					VF_B, Xi, UF_B, zeta.astype(np.float32).reshape(all_state_shape_hat)
 		else:
 			return 0
 
@@ -2206,8 +2203,7 @@ def worker_solver_factory(og,
 	def UC_cond_DC(UC_prime_B,
 				   UC_prime_H_B,
 				   UC_prime_HFC_B,
-				   UC_prime_M_B,
-				   Lambda_B, VF_B,
+				   UC_prime_M_B, VF_B,
 				   Xi, UF_B):
 		"""Indicies of inputs are ordered by:
 
@@ -2225,13 +2221,12 @@ def worker_solver_factory(og,
 		# Reshape to condition out pi
 
 		UC_prime_copi, UC_prime_H_copi, UC_prime_HFC_copi,\
-			UC_prime_M_copi, Lambda_B_copi, VF_B_copi, UF_B_copi, Xi_copi,\
+			UC_prime_M_copi, VF_B_copi, UF_B_copi, Xi_copi,\
 			state_index_copi = \
 			reshape_out_pi(UC_prime_B),\
 			reshape_out_pi(UC_prime_H_B),\
 			reshape_out_pi(UC_prime_HFC_B),\
-			reshape_out_pi(UC_prime_M_B),\
-			reshape_out_pi(Lambda_B), reshape_out_pi(VF_B),\
+			reshape_out_pi(UC_prime_M_B), reshape_out_pi(VF_B),\
 			reshape_out_pi(UF_B),\
 			reshape_out_pi(Xi),\
 			np.float64(reshape_out_pi(X_all_ind[:, 0]))
@@ -2261,18 +2256,16 @@ def worker_solver_factory(og,
 		UC_prime_H_cpi = einsum_row(prob_pi, UC_prime_H_copi)
 		UC_prime_HFC_cpi = einsum_row(prob_pi, UC_prime_HFC_copi)
 		UC_prime_M_cpi = einsum_row(prob_pi, UC_prime_M_copi)
-		Lambda_B_cpi = einsum_row(prob_pi, Lambda_B_copi)
 		VF_B_cpi = einsum_row(prob_pi, VF_B_copi)
 		UF_B_cpi = einsum_row(prob_pi, UF_B_copi)
 		Xi_cpi = einsum_row(prob_pi, Xi_copi)
 		# Reshape to condition out V
 		UC_prime_cov, UC_prime_H_cov, UC_prime_HFC_cov,\
-			UC_prime_M_cov, Lambda_B_cov, VF_B_cov, UF_B_cov, Xi_cov,\
+			UC_prime_M_cov, VF_B_cov, UF_B_cov, Xi_cov,\
 			DB_index_V = reshape_out_V(UC_prime_cpi),\
 			reshape_out_V(UC_prime_H_cpi),\
 			reshape_out_V(UC_prime_HFC_cpi),\
 			reshape_out_V(UC_prime_M_cpi),\
-			reshape_out_V(Lambda_B_cpi),\
 			reshape_out_V(VF_B_cpi),\
 			reshape_out_V(UF_B_cpi),\
 			reshape_out_V(Xi_cpi),\
@@ -2297,18 +2290,15 @@ def worker_solver_factory(og,
 		UC_prime_H_cv = einsum_row(prob_v, UC_prime_H_cov)
 		UC_prime_HFC_cv = einsum_row(prob_v, UC_prime_HFC_cov)
 		UC_prime_M_cv = einsum_row(prob_v, UC_prime_M_cov)
-		Lambda_B_cv = einsum_row(prob_v, Lambda_B_cov)
 		VF_B_cv = einsum_row(prob_v, VF_B_cov)
 		UF_B_cv = einsum_row(prob_v, UF_B_cov)
 		Xi_cv = einsum_row(prob_v, Xi_cov)
 
-		UC_prime_DCC, UC_prime_H_DCC, UC_prime_HFC_DCC, UC_prime_M_DCC,\
-			Lambda_DCC, VF_DCC, UF_DCC\
+		UC_prime_DCC, UC_prime_H_DCC, UC_prime_HFC_DCC, UC_prime_M_DCC, VF_DCC, UF_DCC\
 			= reshape_X_bar(UC_prime_cv),\
 			reshape_X_bar(UC_prime_H_cv),\
 			reshape_X_bar(UC_prime_HFC_cv),\
 			reshape_X_bar(UC_prime_M_cv),\
-			reshape_X_bar(Lambda_B_cv),\
 			reshape_X_bar(VF_B_cv),\
 			reshape_X_bar(UF_B_cv)
 		Xi_cov_out = Xi_cov.reshape(int(len(DB)), grid_size_W,
@@ -2333,13 +2323,11 @@ def worker_solver_factory(og,
 		del Xi_copi_temp
 		del Xi_cov_temp
 		gc.collect()
-		return UC_prime_DCC, UC_prime_H_DCC, UC_prime_HFC_DCC, UC_prime_M_DCC,\
-			Lambda_DCC, VF_DCC, prob_v.reshape(prob_v_shape), prob_pi.reshape(prob_pi_shape), UF_DCC, Xi
+		return UC_prime_DCC, UC_prime_H_DCC, UC_prime_HFC_DCC, UC_prime_M_DCC, VF_DCC, prob_v.reshape(prob_v_shape), prob_pi.reshape(prob_pi_shape), UF_DCC, Xi
 
 	@njit
 	def UC_cond_all(t, UC_prime_DCC, UC_prime_H_DCC,
-					UC_prime_HFC_DCC, UC_prime_M_DCC,
-					Lambda_DCC, VF_DCC, UF_DCC):
+					UC_prime_HFC_DCC, UC_prime_M_DCC, VF_DCC, UF_DCC):
 		"""Generate RHS t+1 Euler equation conditioned on:
 
 				- housing stock taken into time t+1 
@@ -2381,7 +2369,6 @@ def worker_solver_factory(og,
 		UC_prime_H = np.empty(len(X_all_hat_ind))
 		UC_prime_HFC = np.empty(len(X_all_hat_ind))
 		UC_prime_M = np.empty(len(X_all_hat_ind))
-		Lambda = np.empty(len(X_all_hat_ind))
 		VF = np.empty(len(X_all_hat_ind))
 		UF = np.empty(len(X_all_hat_ind))
 
@@ -2427,7 +2414,7 @@ def worker_solver_factory(og,
 
 			# gen values of t+1 unconditioned on t expectation of the iid shocks
 			# for DC, Mortgage and house price
-			U1, U2, U3, U4, L, V, U\
+			U1, U2, U3, U4, V, U\
 				= eval_linear(X_DCQ_W,
 							  UC_prime_DCC[DB_ind,
 										   E_ind_p,
@@ -2457,11 +2444,6 @@ def worker_solver_factory(og,
 										   h_ind, :, :],
 							point, xto.LINEAR) * R_m_prime,\
 				eval_linear(X_DCQ_W,
-							Lambda_DCC[DB_ind, E_ind_p,
-									   alpha_ind_p, beta_ind,
-									   a_ind, :, h_ind, :, :],
-							point, xto.LINEAR) * ADC_return_prime,\
-				eval_linear(X_DCQ_W,
 							VF_DCC[DB_ind, E_ind_p,
 								   alpha_ind_p, beta_ind,
 								   a_ind, :, h_ind, :, :],
@@ -2473,10 +2455,9 @@ def worker_solver_factory(og,
 							point, xto.LINEAR)
 
 			UC_prime[i], UC_prime_H[i], UC_prime_HFC[i],\
-				UC_prime_M[i], Lambda[i], VF[i], UF[i] \
+				UC_prime_M[i], VF[i], UF[i] \
 				= d0(U1, Q_DC_P), d0(U2, Q_DC_P),\
-				d0(U3, Q_DC_P), d0(U4, Q_DC_P),\
-				d0(L, Q_DC_P), d0(V, Q_DC_P), d0(U, Q_DC_P)
+				d0(U3, Q_DC_P), d0(U4, Q_DC_P), d0(V, Q_DC_P), d0(U, Q_DC_P)
 
 		UC_prime[np.where(UC_prime<= 0)] = 1E-250
 		UC_prime_H[np.where(UC_prime_H<= 0)] = 1E-250
@@ -2489,7 +2470,7 @@ def worker_solver_factory(og,
 		UC_prime_HFC[np.where(np.isnan(UC_prime_HFC))]= 1E-250
 		UC_prime_M[np.where(np.isnan(UC_prime_M))]= 1E-250
 
-		return UC_prime, UC_prime_H, UC_prime_HFC, UC_prime_M, Lambda, VF, UF
+		return UC_prime, UC_prime_H, UC_prime_HFC, UC_prime_M, VF, UF
 
 	
 	def solve_LC_model(comm,\
@@ -2617,15 +2598,14 @@ def worker_solver_factory(og,
 			start = time.time()
 			if comm.rank == 0 or comm.rank == 1:
 				B_funcs = gen_RHS_UC_func(comm, t,
-						  VF, Lambda,
+						  VF,
 						  A_prime, 
 						  noadj_vals,
 						  adj_vals,
 						  rent_vals)
 							 
 			if comm.rank == 0:
-				(UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B,\
-				Lambda_B, VF_B, Xi, UF_B, zeta) =  B_funcs
+				(UC_prime_B, UC_prime_H_B, UC_prime_HFC_B, UC_prime_M_B, VF_B, Xi, UF_B, zeta) =  B_funcs
 
 				if verbose == True:
 					print("Solved gen_RHS_UC_func of age {} in {} seconds".
@@ -2634,12 +2614,11 @@ def worker_solver_factory(og,
 				# Step 5: Condition out discrete choice and preference shocks
 				start = time.time()
 				UC_prime_DCC, UC_prime_H_DCC, UC_prime_HFC_DCC,\
-					UC_prime_M_DCC, Lambda_DCC, VF_DCC,\
+					UC_prime_M_DCC, VF_DCC,\
 					prob_v, prob_pi, UF_DCC,Xi_copi_temp = UC_cond_DC(UC_prime_B,
 														 UC_prime_H_B,
 														 UC_prime_HFC_B,
-														 UC_prime_M_B,
-														 Lambda_B, VF_B,\
+														 UC_prime_M_B, VF_B,\
 														 Xi, UF_B)
 				if verbose == True:
 					print("Solved UC_cond_DC of age {} in {} seconds".
@@ -2648,13 +2627,12 @@ def worker_solver_factory(og,
 				# Step 6: Condition out DC return, house price and mortgage 
 				# (iid) shocks
 				start = time.time()
-				UC_prime, UC_prime_H, UC_prime_HFC, UC_prime_M, Lambda, VF, UF\
+				UC_prime, UC_prime_H, UC_prime_HFC, UC_prime_M, VF, UF\
 					= UC_cond_all(t,
 								  UC_prime_DCC,
 								  UC_prime_H_DCC,
 								  UC_prime_HFC_DCC,
-								  UC_prime_M_DCC,
-								  Lambda_DCC, VF_DCC, UF_DCC)
+								  UC_prime_M_DCC, VF_DCC, UF_DCC)
 				if verbose == True:
 					print("Solved UC_cond_all of age {} in {} seconds".
 						  format(Age, time.time() - start))
@@ -2719,7 +2697,7 @@ def worker_solver_factory(og,
 				UC_prime_H = np.empty(np.shape(UC_prime_H),dtype=np.float64)
 				UC_prime_HFC = np.empty(np.shape(UC_prime_HFC),dtype=np.float64)
 				UC_prime_M = np.empty(np.shape(UC_prime_M),dtype=np.float64)
-				Lambda = np.empty(np.shape(UC_prime_M),dtype=np.float64)
+				#Lambda = np.empty(np.shape(UC_prime_M),dtype=np.float64)
 				VF = np.empty(np.shape(VF),dtype=np.float64)
 				UF = np.empty(np.shape(UF),dtype=np.float64)
 
@@ -2729,7 +2707,7 @@ def worker_solver_factory(og,
 			comm.Bcast([UC_prime_H,MPI.DOUBLE],root = 0)
 			comm.Bcast([UC_prime_HFC,MPI.DOUBLE], root = 0)
 			comm.Bcast([UC_prime_M,MPI.DOUBLE], root = 0)
-			comm.Bcast([Lambda,MPI.DOUBLE], root = 0)
+			#comm.Bcast([Lambda,MPI.DOUBLE], root = 0)
 			comm.Bcast([VF,MPI.DOUBLE], root = 0)
 			comm.Barrier()
 		
@@ -2756,7 +2734,7 @@ def generate_worker_pols(og,
 	solve_LC_model = worker_solver_factory(og, world_comm, comm, gen_R_pol,
 										   scr_path = scr_path,
 										   gen_newpoints = gen_newpoints,
-										   verbose = False )
+										   verbose = False)
 	del og
 	og = {}
 	gc.collect()

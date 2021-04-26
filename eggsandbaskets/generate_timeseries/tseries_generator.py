@@ -68,7 +68,7 @@ def genprofiles_operator(og,
     kappa_m = og.parameters.kappa_m
     r_l = og.parameters.r_l
     r_m = beta_m*r_l
-    sigma_plan = og.parameters.sigma_plan
+    sigma_plan = np.exp(og.parameters.sigma_plan)
 
     # Grid parameters
     DC_max = og.parameters.DC_max
@@ -86,10 +86,7 @@ def genprofiles_operator(og,
     phi_d = og.parameters.phi_d
     phi_c = og.parameters.phi_c
     phi_r = og.parameters.phi_r
-    sigma_DC_V = og.parameters.sigma_DC_V
-    sigma_DB_V = og.parameters.sigma_DB_V
-    sigma_DC_pi = og.parameters.sigma_DC_pi
-    sigma_DB_pi = og.parameters.sigma_DB_pi
+
 
     # Exogenous shock processes
     beta_hat, P_beta, beta_stat = og.st_grid.beta_hat,\
@@ -224,6 +221,11 @@ def genprofiles_operator(og,
         adj_pi,adj_pi_1     =0,0
         P_h = np.zeros(length+1)
 
+        ten_shock = np.random.normal(0, 4.67)
+        t_0 = min(50, max(16, age - 13.26*np.log(age) - 36 + ten_shock))
+        t_0 = max(16, int(t_0))
+        tzero = min(t_0, age -1)
+
         # Generate sequence of house prices
         P_h[tzero]  = 1/((1+r_H)**(age - tzero))
 
@@ -242,7 +244,7 @@ def genprofiles_operator(og,
         E_ind  = int(W[tzero])
         beta_ind = int(beta_hat_ts[tzero])
         alpha_ind = int(alpha_hat_ts[tzero])
-        points_plan_choice = np.array([TS_A,TS_DC,TS_H, .6 +.4*P_h[tzero], TS_M])
+        points_plan_choice = np.array([TS_A,TS_DC,TS_H, .8 +.2*P_h[tzero], TS_M])
         
         vdcfunc = policy_VF[1,E_ind,alpha_ind,beta_ind,0,:]
         vdbfunc = policy_VF[0,E_ind,alpha_ind,beta_ind,0,:]
@@ -253,16 +255,16 @@ def genprofiles_operator(og,
                             vdbfunc, \
                             points_plan_choice)
 
-        V_DC_scaled = ((V_DC - adj_p(age))/sigma_plan)\
-                         - max(((V_DC - adj_p(age))/sigma_plan), ((V_DB/sigma_plan)))
+        V_DC_scaled = ((V_DC - adj_p(tzero))/sigma_plan)\
+                         - max(((V_DC - adj_p(tzero))/sigma_plan), ((V_DB/sigma_plan)))
         V_DB_scaled = ((V_DB/sigma_plan)) \
-                         - max(((V_DC - adj_p(age))/sigma_plan), ((V_DB/sigma_plan)))
+                         - max(((V_DC - adj_p(tzero))/sigma_plan), ((V_DB/sigma_plan)))
 
         Prob_DC = np.exp(V_DC_scaled)/(np.exp(V_DB_scaled)\
                         +   np.exp(V_DC_scaled ) )    
 
 
-        Prob_DC = np.float64(min(max(0.15, Prob_DC), 0.5))
+        #Prob_DC = np.float64(min(max(0.15, Prob_DC), 0.5))
         account_ind = np.searchsorted(np.cumsum(np.array([1-Prob_DC,\
                                                              Prob_DC])),\
                                                             DBshock)
@@ -1169,7 +1171,7 @@ if __name__ == '__main__':
             eggbasket_config = yaml.safe_load(stream)
        
         # Get best male moments
-        model_name = 'final_male_v1'
+        model_name = 'final_male_v2'
 
         top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
         params = pickle.load(open("/scratch/pv33/ls_model_temp/{}/{}_acc_0/params.smms".format(model_name, top_id),"rb"))

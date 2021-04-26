@@ -46,6 +46,12 @@ def rand_p_generator(
                #print("in range")
             else:
                 pass
+                
+            if draws[1]<.01 and draws[1]>-.01:
+                draws[1] = .01
+            if draws[1]>-1.01 and draws[1]<-.99:
+                draws[1] = -1.01
+            #print(in_range)
 
             for i,key in zip(np.arange(len(draws)),param_random_bounds.keys()):
                 parameters[key]  = draws[i]

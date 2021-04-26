@@ -132,7 +132,7 @@ def gen_RMS(LS_models, gender, moments_data, world_comm, layer_1_comm,layer_2_co
 	# Each layer two group solves the model  
 	if world_comm.rank == 0: 
 		print("Solving model.")
-	if t == 0:
+	if t==0:
 		policies = generate_worker_pols(og,world_comm,layer_2_comm, load_retiree = 0,\
 												gen_newpoints = True)
 	else: 
@@ -158,7 +158,9 @@ def gen_RMS(LS_models, gender, moments_data, world_comm, layer_1_comm,layer_2_co
 
 		moments_data_nonan = moments_data_array[np.where(~np.isnan(moments_data_array))]
 		moments_sim_nonan = moments_sim_array[np.where(~np.isnan(moments_data_array))]
-		deviation_r = np.abs((moments_sim_nonan - moments_data_nonan)/moments_data_nonan)
+		demon_mom = np.abs(moments_data_nonan)
+		demon_mom[np.where(demon_mom<.05)] = .05
+		deviation_r = np.abs((moments_sim_nonan - moments_data_nonan)/demon_mom)
 		deviation_d = np.abs(moments_data_nonan-moments_sim_nonan)
 
 		#deviation_r[np.where(np.abs(moments_data_nonan)<1)] = deviation_d[np.where(np.abs(moments_data_nonan)<1)]
@@ -391,7 +393,7 @@ if __name__ == "__main__":
 	# Estimation parameters  
 	tol = 1E-8
 	TSN = 500
-	N_elite = 60
+	N_elite = 28
 	d = 3
 	start = time.time()
 	U = pickle.load(open("/scratch/pv33/ls_model_temp/{}/seed_U.smms"\
