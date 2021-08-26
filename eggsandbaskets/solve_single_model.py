@@ -8,6 +8,7 @@ import warnings
 warnings.filterwarnings('ignore')
 import numpy as np
 
+
 # Housing model modules
 import lifecycle_model 
 from solve_policies.worker_solver import generate_worker_pols
@@ -51,6 +52,8 @@ def gen_communicators(world, block_size_layer_1,
 if __name__ == "__main__":
 	import csv
 	from mpi4py import MPI as MPI4py
+	import sys
+
 	MPI4py.pickle.__init__(pickle.dumps, pickle.loads)
 
 	world = MPI4py.COMM_WORLD
@@ -72,15 +75,43 @@ if __name__ == "__main__":
 			param_random_bounds[row['parameter']] = np.float64([row['LB'],\
 				row['UB']])
 
-	model_name = 'final_male_v2'
-	top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
-	#top_id = 'AMWGWF_20210415-132028_test_3'
-	sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/final_male_v2/latest_sampmom.smms","rb"))
-	#sampmom[0][9]= 2
-	#sampmom[0][2]= 250
-	#sampmom[0][21]= 1
-	#param_dict = pickle.load(open("/scratch/pv33/ls_model_temp/{}/{}_acc_0/params.smms".format(model_name, top_id),"rb")) 
-	param_dict = eggbasket_config['male']
+	gender = sys.argv[1]
+
+	if gender == 'male':
+	# Solve male baseline (Initial submit version may 12,2021)
+	# Note '9GLB6E_20210501-181303_baseline_male' is used as male baseline ID
+		model_name = 'baseline_male'
+		params = eggbasket_config['male']
+		top_id = '9GLB6E_20210501-181303_baseline_male'
+		sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/final_male_v3/latest_sampmom.smms".format(model_name),"rb"))
+		param_dict = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_male/{}_acc_0/params.smms".format(top_id),"rb")) 
+		param_dict['grid_size_H'] = 20.0
+		param_dict['grid_size_alpha'] = 2.0
+		param_dict['grid_size_beta'] = 2.0
+		param_dict['sigma_alpha'] = .02
+		param_dict['rho_alpha']  = .8
+		param_dict['sigma_beta'] = .02
+		param_dict['rho_beta']  = .8
+		params['parameters'] = param_dict
+
+	# Solve female baseline (Initial submit version may 12,2021)
+	# Note '9GLB6E_20210501-181303_baseline_male' is used as male baseline ID
+	if gender == 'female':
+		model_name = 'baseline_female'
+		params = eggbasket_config['female']
+		top_id = pickle.load(open("/scratch/pv33/ls_model_temp/final_female_v3/topid.smms".format(model_name),"rb"))
+		sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/final_male_v3/latest_sampmom.smms".format(model_name),"rb"))
+		param_dict = pickle.load(open("/scratch/pv33/ls_model_temp/final_female_v3/{}_acc_0/params.smms".format(top_id),"rb")) 
+		param_dict['grid_size_H'] = 20.0
+		param_dict['grid_size_alpha'] = 2.0
+		param_dict['grid_size_beta'] = 2.0
+		param_dict['alpha_bar'] = .49
+		param_dict['sigma_alpha'] = .02
+		param_dict['rho_alpha']  = .8
+		param_dict['sigma_beta'] = .02
+		param_dict['rho_beta']  = .8
+		params['parameters'] = param_dict
+
 
 	layer_1_comm, layer_2_comm, layer_ts_comm = gen_communicators(world,\
 													block_size_layer_1,\
@@ -89,15 +120,15 @@ if __name__ == "__main__":
 	if layer_1_comm.rank == 0: 
 		cov_mat = np.zeros(np.shape(sampmom[1]))
 		LS_models =  lifecycle_model\
-						.LifeCycleParams('final_male_v2', param_dict, random_draw = True, 
+						.LifeCycleParams(model_name, params, 
+						  random_draw = False, 
 		                  random_bounds = param_random_bounds, # parameter bounds for randomly generated params
 		                  param_random_means = sampmom[0], # mean of random param distribution 
 		                  param_random_cov = cov_mat, 
 		                  uniform = False)
 		test = 0
 		print('test')
-		LS_models.og_DB.ID = top_id
-		LS_models.og_DC.ID = top_id
+
 	else:
 		LS_models = None
 		test = None
@@ -107,7 +138,7 @@ if __name__ == "__main__":
 	print("Rank {} on world is rank {} on layer 1 and rank {} on layer 2 and model ID is {}"\
 			.format(world_rank,layer_1_comm.rank, layer_2_comm.rank,LS_models.param_id))
 
-	pickle.dump(LS_models.param_id,open("/scratch/pv33/ls_model_temp/final_male_v2/single_ID.smms","wb") )
+	pickle.dump(LS_models.param_id,open("/scratch/pv33/ls_model_temp/{}/single_ID_latest.smms".format(model_name),"wb") )
 
 	if layer_1_comm.rank == 0 or layer_1_comm.rank == 1 or layer_1_comm.rank == 2 or layer_1_comm.rank == 3 :
 		og  = LS_models.og_DB
@@ -125,7 +156,7 @@ if __name__ == "__main__":
 	if world.rank == 0:
 		param_id_list = print([item for item in param_id_list if item is not None])
 
-	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = 1, gen_newpoints = False)
+	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = 0, gen_newpoints = True)
 
 	# Generate moments 
 	if layer_1_comm.rank == 0:
@@ -134,7 +165,7 @@ if __name__ == "__main__":
 		TSN = 100
 		U = np.random.rand(6,100,TSN,100) 
 
-		TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
+		TSALL_10_df, TSALL_14_df = gen_panel_ts('female',og,U, TSN)
 
 		moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
 

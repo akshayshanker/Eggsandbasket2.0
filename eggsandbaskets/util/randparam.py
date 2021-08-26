@@ -29,9 +29,12 @@ def rand_p_generator(
 
     # generate random sample
     random_draw = np.random.uniform(0, 1)
-    # noise injection rate of 10%
-    #if random_draw<.1:
-    #    initial = 1
+    # noise injection rate of 10%\\
+
+    #initial_r = 0
+    if random_draw<0:
+        param_random_cov = np.diag(np.diag(param_random_cov))
+        #param_random_cov[1,1] = param_random_cov[1,1]*2
 
 
     in_range = False
@@ -39,19 +42,12 @@ def rand_p_generator(
 
         while in_range == False:
             draws = np.random.multivariate_normal(param_random_means, param_random_cov)
-            #print(draws)
+            #print(random_param_bounds_ar[:,1\])
             if np.sum(draws> random_param_bounds_ar[:,1]) + np.sum(draws<random_param_bounds_ar[:,0])==0:
                 in_range = True
-
-               #print("in range")
+                #print("in range")
             else:
                 pass
-                
-            if draws[1]<.01 and draws[1]>-.01:
-                draws[1] = .01
-            if draws[1]>-1.01 and draws[1]<-.99:
-                draws[1] = -1.01
-            #print(in_range)
 
             for i,key in zip(np.arange(len(draws)),param_random_bounds.keys()):
                 parameters[key]  = draws[i]

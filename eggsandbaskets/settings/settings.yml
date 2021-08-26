@@ -100,7 +100,7 @@ baseline_lite:
     A_min: 1.0e-1
     A_min_W: 1.0e-1
     C_max: 2.0
-    C_min: 1.0e-2
+    C_min: 1.0e-4
     DC_max: 20.0
     DC_min: .1
     H_max: 16
@@ -392,13 +392,13 @@ male:
     A_max_WW: 30.0
     A_min: 1.0e-1
     A_min_W: 1.0e-1
-    C_max: 2.0
-    C_min: 1.0e-2
+    C_max: 5.0
+    C_min: 5.0e-02
     DC_max: 20.0
     DC_min: .1
     H_max: 16
     HS_max: 16
-    H_min: 1.0e-1
+    H_min: 1.0e-2
     ID: 188198904234
     M_max: 7.0
     M_min: 0.0
@@ -407,7 +407,7 @@ male:
     R: 64.0
     T: 99.0
     alpha: 1.0
-    alpha_bar: 0.696338
+    alpha_bar: 0.3
     beta_bar: 0.91
     beta_m: 1
     r_m: .0614
@@ -416,66 +416,66 @@ male:
     f_ACF: 0.8625
     f_ASF: 1.0
     f_LSF: 0.23
-    gamma: 1.93
-    grid_size_A: 18.0
+    gamma: 4
+    grid_size_A: 20.0
     grid_size_C: 15.0
     grid_size_DC: 9.0
     grid_size_DCR: 2.0
-    grid_size_H: 30.0
-    grid_size_HS: 30.0
+    grid_size_H: 20.0
+    grid_size_HS: 20.0
     grid_size_M: 9.0
     grid_size_Q: 6.0
     grid_size_Q_s: 3.0
     grid_size_W: 3.0
-    grid_size_alpha: 1.0
-    grid_size_beta: 1.0
+    grid_size_alpha: 2.0
+    grid_size_beta: 2.0
     h: 1.68
     k: 2.64169
-    kappa_m: 0.25
+    kappa_m: 0.33
     l: 0.54
-    nu_p_0: -1.876
+    nu_p_0: -0.9
     nu_p_1: -0.112
     nu_p_2: 0.000875
-    nu_r_0: -6.788
+    nu_r_0: -0.1
     nu_r_1: -0.033
     nu_r_2: 0.0001308
     nu_r_3: 0.109
     nu_r_4: 2.108
-    nu_v_0: -2.175
+    nu_v_0: .3
     nu_v_1: 48.531
     nu_v_2: -0.001018
-    nu_v_3: -0.34
+    nu_v_3: -0.346
     phi_c: 0.2
     phi_r: .041
     phi_d: 0.2
     phi_w: 0.4044149
-    psi: -1
+    psi: 2
     r: 0.025
     r_H: 0.032
     r_h: 0.0476
     r_l: 0.0193
-    rho: -2
-    rho_alpha: 0.126099 
-    rho_beta: 0.2834749347431
-    sigma_DB_V: .000582
-    sigma_DB_pi: 0.003022
-    sigma_DC_V: .000718
-    sigma_DC_pi: 0.001351
-    sigma_alpha: 0.004177598740390481
-    sigma_beta: 0.00002
+    rho: .3
+    rho_alpha: 0.8
+    rho_beta: 0.8
+    sigma_DB_V: .000322
+    sigma_DB_pi: 0.3022
+    sigma_DC_V: .0003022
+    sigma_DC_pi: 0.1351
+    sigma_alpha: 0.04
+    sigma_beta: 0.04
     sigma_d: 0.064
-    sigma_plan: 0.013
+    sigma_plan: 4.127e+10
     sigma_r_H: 0.042
     sigma_w: 0.0221957
-    tau_housing: 0.08
-    theta: 5.29
+    tau_housing: 0.15
+    theta: 10
     tzero: 16.0
     v_E: 0.17
     v_S: 0.0235
   risk_share_points:
-  - 0.0
-  - 0.7
-  - 1.0
+    - 0.0
+    - 0.7
+    - 1.0
   survival:
   - 0.995905
   - 0.99971
@@ -579,7 +579,9 @@ male:
   - 0.0
   vol_cont_points:
   - 0.0
+  - 0.01
   - 0.034
+  - 0.08
   - 0.18
   normalisation:
   - 1
@@ -686,8 +688,8 @@ female:
     A_max_WW: 30.0
     A_min: 1.0e-1
     A_min_W: 1.0e-1
-    C_max: 2.0
-    C_min: 1.0e-2
+    C_max: 5.0
+    C_min: 1.0e-4
     DC_max: 20.0
     DC_min: .1
     H_max: 16
@@ -711,21 +713,21 @@ female:
     f_ASF: 1.0
     f_LSF: 0.23
     gamma: 2.98
-    grid_size_A: 15.0
+    grid_size_A: 20.0
     grid_size_C: 15.0
     grid_size_DC: 9.0
     grid_size_DCR: 2.0
-    grid_size_H: 15.0
-    grid_size_HS: 15.0
+    grid_size_H: 20.0
+    grid_size_HS: 20.0
     grid_size_M: 9.0
-    grid_size_Q: 6.0
+    grid_size_Q: 9.0
     grid_size_Q_s: 3.0
     grid_size_W: 3.0
-    grid_size_alpha: 1.0
-    grid_size_beta: 1.0
+    grid_size_alpha: 2.0
+    grid_size_beta: 2.0
     h: 1.68
     k: 2.64169
-    kappa_m: 0.25
+    kappa_m: 0.33
     l: 0.54
     nu_p_0: -1.876
     nu_p_1: -0.112
@@ -748,15 +750,15 @@ female:
     r_H: 0.032
     r_h: 0.0476
     r_l: 0.0193
-    rho: -1.0
-    rho_alpha: 0.126099 
-    rho_beta: 0.2834749347431
+    rho: .15
+    rho_alpha: 0.8
+    rho_beta: 0.8
     sigma_DB_V: .000582
     sigma_DB_pi: 0.003022
     sigma_DC_V: .000718
     sigma_DC_pi: 0.001351
-    sigma_alpha: 0.004177598740390481
-    sigma_beta: 0.00002
+    sigma_alpha: 0.04
+    sigma_beta: 0.04
     sigma_d: 0.064
     sigma_plan: 0.013
     sigma_r_H: 0.042

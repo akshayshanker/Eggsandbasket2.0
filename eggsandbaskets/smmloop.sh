@@ -9,6 +9,6 @@ UCX_LOG_LEVEL=error
 
 for var in {1..50}
 do
-	 mpiexec -n 1920  python3 -m mpi4py smm.py male final_male_v2
+	 mpiexec -n 48  python3 -m mpi4py counterfactuals.py female
 done 
 

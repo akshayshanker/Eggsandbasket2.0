@@ -104,7 +104,7 @@ def gen_format_moments(TS1,TS2, moments_data, gender):
 	
 	moments_sim_array = np.array(np.ravel(moments_sim_sorted))
 
-	moments_sim_array[np.isnan(moments_sim_array)] = 1e50
+	moments_sim_array[np.isnan(moments_sim_array)] = 1
 
 	moments_data = moments_data.loc[:,moments_data.columns.str\
 									.endswith('_'+gender)] 
@@ -134,7 +134,7 @@ def gen_RMS(LS_models, gender, moments_data, world_comm, layer_1_comm,layer_2_co
 		print("Solving model.")
 	if t==0:
 		policies = generate_worker_pols(og,world_comm,layer_2_comm, load_retiree = 0,\
-												gen_newpoints = True)
+												gen_newpoints = False)
 	else: 
 		policies = generate_worker_pols(og,world_comm,layer_2_comm, load_retiree = 0,\
 												gen_newpoints = False)
@@ -393,7 +393,7 @@ if __name__ == "__main__":
 	# Estimation parameters  
 	tol = 1E-8
 	TSN = 500
-	N_elite = 28
+	N_elite = 46
 	d = 3
 	start = time.time()
 	U = pickle.load(open("/scratch/pv33/ls_model_temp/{}/seed_U.smms"\

@@ -432,6 +432,12 @@ class LifeCycleModel:
                         self.Q_shocks_r = self.Q_shocks_mc.state_values
                         self.Q_shocks_P = self.Q_shocks_mc.P[0]
 
+                        # mortgage shocks
+                        self.lnmort_shocks = tauchen(0, parameters['kappa_m']*lnrl_sd,
+                                                            n=int(parameters['grid_size_DCR']))
+                        X_m, P_m = self.lnmort_shocks.state_values, self.lnmort_shocks.P[0]
+                        self.X_m = np.exp(parameters['r_m'] + X_m)
+
         class ModelCartGrids:
 
                 """
@@ -481,19 +487,10 @@ class LifeCycleModel:
                         # Combine housing and pension return shocks
                         # Q_DC_shocks[0] gives safe asset shock, Q_DC_shocks[1]
                         # gives risky asset shock and Q_DC_shocks[2] gives housing shock
-                        self.Q_DC_shocks = cartesian([stgrd.X_rl, stgrd.X_rh,
-                                                                                    stgrd.Q_shocks_r])
-                        beta_m = param.beta_m
-                        l = param.l
-                        sigma_d = param.sigma_d
-                        r_m = param.r_m
-                        X_rl = stochgrids.X_rl
-                        r_l = param.r_l
-                        kappa = param.kappa_m
-
+                        self.Q_DC_shocks = cartesian([stgrd.X_rl, stgrd.X_rh, stgrd.Q_shocks_r,stgrd.X_m])
 
                         P_tmp2 = cartesian([stgrd.P_rl, stgrd.P_rh,
-                                                                stgrd.Q_shocks_P])
+                                                                stgrd.Q_shocks_P,stgrd.X_m])
                         self.Q_DC_P = np.zeros(len(self.Q_DC_shocks))
 
                         for i in range(len(self.Q_DC_P)):
@@ -527,15 +524,15 @@ class LifeCycleModel:
 
                         # Make the mortgage rate shocks 
                         # Standard deviation of ln_rm
-                        sd_lnmort = np.sqrt(np.log(1 + (((beta_m*l*sigma_d)**2)/(r_m**2))))
-                        mu_lnmort = np.log((r_m**2)/np.sqrt(r_m**2 + (beta_m*l*sigma_d)**2))
+                        #sd_lnmort = np.sqrt(np.log(1 + (((beta_m*l*sigma_d)**2)/(r_m**2))))
+                        #mu_lnmort = np.log((r_m**2)/np.sqrt(r_m**2 + (beta_m*l*sigma_d)**2))
                         
                         # Normalise the standard deviation of the low DC return so it is 1 
-                        dc_low_errors_sd_1 = self.Q_DC_shocks[:,0] - r_l -1
+                        #dc_low_errors_sd_1 = self.Q_DC_shocks[:,0] - r_l -1
                         #dc_low_errors_sd_1 = dc_low_errors_sd_1/np.sqrt((np.inner(dc_low_errors_sd_1**2, self.Q_DC_P)))
 
                         # Construct the log-normally distribution r_m_prime shock vector 
-                        self.r_m_prime = np.exp(r_m + kappa*dc_low_errors_sd_1/l)
+                        self.r_m_prime = self.Q_DC_shocks[:,3]
                         #print(self.r_m_prime)
 
         class BigAssGrids:
@@ -850,11 +847,29 @@ if __name__ == "__main__":
                                                                                                                                 row['UB']])
 
         sampmom = [0,1]
-
+        eggbasket_config['male']['parameters']['sigma_alpha'] = .02
+        eggbasket_config['male']['parameters']['rho_alpha'] = .76
         LS_models = LifeCycleParams('test',
-                                                                eggbasket_config['baseline_lite'],
-                                                                random_draw=True,
+                                                                eggbasket_config['male'],
+                                                                random_draw=False,
                                                                 random_bounds=param_random_bounds,
                                                                 param_random_means=sampmom[0],
                                                                 param_random_cov=sampmom[1],
-                                                                uniform = True)
+                                                                uniform = False)
+        import matplotlib.pyplot as plt
+        fig = plt.figure()
+        ax1 = fig.add_subplot(211) 
+        my_map = plt.cm.hot_r
+        sm = plt.cm.ScalarMappable(cmap=my_map,norm=plt.Normalize(np.min(np.linspace(.01, 15, 100)),np.max(np.linspace(.01, 15, 100))))
+        colors = [my_map(i) for i in np.linspace(.01, 15, 100)]
+        assets = np.linspace(.01, 15, 100)
+        for i in range(100):
+            ages = np.arange(16,65)
+            cost_v = LS_models.og_DC.functions.adj_v(ages, np.array([assets[i]]))
+            ax1.plot(ages, cost_v, color=colors[i])
+
+        #fig.colorbar(sm)
+        fig.savefig('adj_v_plot.png')
+        
+
+

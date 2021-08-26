@@ -5,7 +5,7 @@ import csv
 import os
 
 
-mod_name = 'final_female_v2'
+mod_name = 'final_female_v3'
 TSN = 500
 d = 3
 path = "/scratch/pv33/ls_model_temp/{}".format(mod_name)
@@ -39,7 +39,7 @@ pickle.dump(sampmom,open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms"\
 
 
 
-mod_name = 'final_male_v2'
+mod_name = 'final_male_v3'
 TSN = 500
 d = 3
 path = "/scratch/pv33/ls_model_temp/{}".format(mod_name)
@@ -48,7 +48,7 @@ os.makedirs(path, exist_ok=True)
 
 t = 0
 pickle.dump(t, open("/scratch/pv33/ls_model_temp/{}/t.smms".format(mod_name),"wb")) 
-sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms".format('final_male_v1'),"rb")) 
+sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms".format('final_male_v2'),"rb")) 
 pickle.dump(sampmom,open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms"\
 					.format(mod_name),"wb"))
 

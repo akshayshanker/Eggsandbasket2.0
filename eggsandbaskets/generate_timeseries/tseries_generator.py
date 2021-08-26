@@ -1,4 +1,3 @@
-
 """
 This module contains the functions to generate time series of agents
 and moments from a solved HousingModel 
@@ -30,10 +29,12 @@ import sys
 sys.path.append("..")
 from eggsandbaskets.util.helper_funcs import *
 import glob 
+from quantecon.optimize.root_finding import brentq
+
 import copy
 import os
 
-def genprofiles_operator(og,
+def genprofiles_operator(og,nadj, DC_LB,
                 norm = 1E5):
 
     """For a LifeCycle model, returns an operator to
@@ -68,7 +69,9 @@ def genprofiles_operator(og,
     kappa_m = og.parameters.kappa_m
     r_l = og.parameters.r_l
     r_m = beta_m*r_l
-    sigma_plan = np.exp(og.parameters.sigma_plan)
+    sigma_plan = og.parameters.sigma_plan
+    u = og.functions.u
+    uc = og.functions.ucnz
 
     # Grid parameters
     DC_max = og.parameters.DC_max
@@ -87,12 +90,19 @@ def genprofiles_operator(og,
     phi_c = og.parameters.phi_c
     phi_r = og.parameters.phi_r
 
+    adj_p, adj_v, adj_pi = og.functions.adj_p, og.functions.adj_v,\
+        og.functions.adj_pi
+    sigma_DC_V = og.parameters.sigma_DC_V
+    sigma_DB_V = og.parameters.sigma_DB_V
+    sigma_DC_pi = og.parameters.sigma_DC_pi
+    sigma_DB_pi = og.parameters.sigma_DB_pi
 
     # Exogenous shock processes
     beta_hat, P_beta, beta_stat = og.st_grid.beta_hat,\
         og.st_grid.P_beta, og.st_grid.beta_stat
     alpha_hat, P_alpha, alpha_stat = og.st_grid.alpha_hat,\
         og.st_grid.P_alpha, og.st_grid.alpha_stat
+    ces_c1 = og.functions.ces_c1
 
     X_r, P_r = og.st_grid.X_r, og.st_grid.P_r
     Q_shocks_r, Q_shocks_P = og.st_grid.Q_shocks_r,\
@@ -129,8 +139,27 @@ def genprofiles_operator(og,
     all_state_A_last_shape, policy_shape_nadj,\
     policy_shape_adj, policy_shape_rent, prob_v_shape, prob_pi_shape = gen_policyout_arrays(og)
 
+
+    @njit
+    def val_diff(dc_bal, adj,t):
+        adj_at_65 = adj/(beta_bar**(65-t))
+        mpc_super = .05
+        super_bal = 8
+        h = 8
+
+        value_at_65_1 = u(mpc_super*(super_bal +dc_bal)/1000,h/1000,alpha_bar)/(1-beta_bar)
+        value_at_65_2 = u(mpc_super*(super_bal)/1000,h/1000,alpha_bar)/(1-beta_bar)
+        #print(value_at_65_1 - value_at_65_2 - adj_at_65)
+        return value_at_65_1 - value_at_65_2 - adj_at_65
+
+    @njit
+    def ad_u(adj,t):
+        args = (adj,t)
+        root = brentq(val_diff, 1e-200, 1e100, args = args, disp=False)
+        return root[0]
+
     @njit 
-    def gen_VPi(points,\
+    def gen_VPi(gender,t,points,\
                 Age,\
                 account_ind,\
                 E_ind,\
@@ -152,10 +181,27 @@ def genprofiles_operator(og,
                                  points, xto.LINEAR) 
 
         prob_V_vals[np.isnan(prob_V_vals)] = 0.02
-        #prob_V_vals[np.where(prob_V_vals<.01)] = .01
-        #prob_V_vals[np.where(prob_V_vals>.99)] = .99
+        
+        prob_V_vals[np.where(prob_V_vals<.01)] = .01
+        prob_V_vals[np.where(prob_V_vals>.99)] = .99
 
         prob_v = prob_V_vals/np.sum(prob_V_vals)
+        prob_v_tilde = np.copy(prob_v)
+
+        if nadj == False:
+            prob_v[1] = prob_v[1] +.2
+            prob_v[0] = prob_v[0]  + 2
+            prob_v = prob_v/np.sum(prob_v)
+
+            prob_v[1] = prob_v[1]+.2
+            prob_v[0] = prob_v[0]  + 2
+            prob_v = prob_v/np.sum(prob_v)
+            if t>55:
+                #prob_v[0] = prob_v[0] + 2
+                prob_v[4] = prob_v[4]+.5
+                prob_v[3] = prob_v[3]+.1
+                prob_v[2] = prob_v[2]+.5
+                prob_v = prob_v/np.sum(prob_v)
 
         # Pick a random draw for the voluntary contribution (index in the vol.cont grid)
         V_ind  = np.arange(len(V))\
@@ -166,18 +212,38 @@ def genprofiles_operator(og,
         prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points,  xto.LINEAR) 
 
         prob_pi_vals[np.isnan(prob_pi_vals)] = 0.02
-        #prob_pi_vals[np.where(prob_pi_vals<.01)] = .01
-        #prob_pi_vals[np.where(prob_pi_vals>.99)] = .99
         prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
+        prob_pi_tilde  = np.copy(prob_Pi)
+        if nadj == False:
+            if gender == 'females':
+                prob_pi_vals[0] = prob_pi_vals[0] + .3
+
+            if gender == 'male' and t <44:
+                prob_pi_vals[0] = prob_pi_vals[0] + .35
+
+        #prob_pi_vals[1] = prob_pi_vals[1] + .4 # this translates to a adj_pi adjustment
+        prob_pi_vals[np.where(prob_pi_vals<.01)] = .01
+        prob_pi_vals[np.where(prob_pi_vals>.99)] = .99
+        prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
+       # prob_pi_vals[1] = prob_pi_vals[1] + .7
+        #prob_pi_vals[0] = prob_pi_vals[1] + .3
+        #prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
 
         Pi_ind  = np.arange(len(Pi))\
                     [np.searchsorted(np.cumsum(prob_Pi), pi_ushock)]
         pi = Pi[Pi_ind]
 
-        return V_ind, v, Pi_ind, pi 
+        v_adj_c = np.log(max(1,prob_v[0]/max(1e-100,prob_v_tilde[0])))*sigma_DC_V + adj_v(t,np.array([points[1]]))
+        pi_adj_c = np.log(max(1,prob_Pi[1]/max(1e-100,prob_pi_tilde[1])))*sigma_DC_pi+ adj_pi(t,np.array([points[0]]), adj_p(17))
+
+        dollar_v = ad_u(np.log(v_adj_c[0]),t)
+        dollar_pi = ad_u(pi_adj_c[0],t)
+        #rint(adj_v(t,np.array([points[1]])))
+        print(dollar_v)
+        return V_ind, v, Pi_ind, pi, dollar_v, dollar_pi
 
     @njit
-    def seriesgen(age,\
+    def seriesgen(age,gender,\
                     wave_length,\
                     W,\
                     beta_hat_ts,\
@@ -221,11 +287,12 @@ def genprofiles_operator(og,
         adj_pi,adj_pi_1     =0,0
         P_h = np.zeros(length+1)
 
-        ten_shock = np.random.normal(0, 4.67)
-        t_0 = min(50, max(16, age - 13.26*np.log(age) - 36 + ten_shock))
-        t_0 = max(16, int(t_0))
-        tzero = min(t_0, age -1)
-
+        #ten_shock = np.random.normal(0, 6)
+        #t_0 = min(50, max(16, age - 13.26*np.log(age) + 36 - ten_shock)) #equation from excel calibration, make hard coded 
+        #t_0 = max(16, int(t_0))
+        
+        #tzero = min(t_0, age -1)
+        #@print(tzero)
         # Generate sequence of house prices
         P_h[tzero]  = 1/((1+r_H)**(age - tzero))
 
@@ -233,9 +300,14 @@ def genprofiles_operator(og,
             P_h[t+1] = (1+r_H)*P_h[t]  
 
         # Initialize continuous points 
-        TS_A  = A_min
+        TS_A  = max(np.exp(5.44 + .2815*25 - .002448*tzero**2)/100000, A_min) #equation from excel calibration, make hard coded 
+        #TS_A = A_min
+        #print(TS_A)
         TS_H  = H_min
+        #TS_DC = (25527*np.exp(.0448*tzero) + np.random.normal(0, 4597*np.exp(.0872*tzero)))/100000
         TS_DC = .1
+        #print(TS_DC)
+        #print(tzero)
         TS_M  = 0
         wave_data_14 = np.zeros(21)
         wave_data_10 = np.zeros(21)
@@ -244,31 +316,42 @@ def genprofiles_operator(og,
         E_ind  = int(W[tzero])
         beta_ind = int(beta_hat_ts[tzero])
         alpha_ind = int(alpha_hat_ts[tzero])
-        points_plan_choice = np.array([TS_A,TS_DC,TS_H, .8 +.2*P_h[tzero], TS_M])
+        points_plan_choice = np.array([1,1,1, P_h[tzero], 0])
         
-        vdcfunc = policy_VF[1,E_ind,alpha_ind,beta_ind,0,:]
-        vdbfunc = policy_VF[0,E_ind,alpha_ind,beta_ind,0,:]
+        vdcfunc = policy_VF[1,E_ind,alpha_ind,beta_ind,1,:]
+        vdbfunc = policy_VF[0,E_ind,alpha_ind,beta_ind,1,:]
         V_DC = eval_linear(X_cont_W, \
                             vdcfunc,\
-                            points_plan_choice)
+                            points_plan_choice, xto.LINEAR)
         V_DB = eval_linear(X_cont_W, \
                             vdbfunc, \
-                            points_plan_choice)
+                            points_plan_choice, xto.LINEAR)
 
-        V_DC_scaled = ((V_DC - adj_p(tzero))/sigma_plan)\
-                         - max(((V_DC - adj_p(tzero))/sigma_plan), ((V_DB/sigma_plan)))
+        V_DC_scaled = ((V_DC - adj_p(age))/sigma_plan)\
+                         - max(((V_DC - adj_p(age))/sigma_plan), ((V_DB/sigma_plan)))
         V_DB_scaled = ((V_DB/sigma_plan)) \
-                         - max(((V_DC - adj_p(tzero))/sigma_plan), ((V_DB/sigma_plan)))
+                         - max(((V_DC - adj_p(age))/sigma_plan), ((V_DB/sigma_plan)))
 
         Prob_DC = np.exp(V_DC_scaled)/(np.exp(V_DB_scaled)\
                         +   np.exp(V_DC_scaled ) )    
 
+        #print(adj_p(tzero))
+        dollar_p = ad_u(adj_p(age)*1e-300,t)
+       # print(Prob_DC)
+        #print(V_DB_scaled)
+        #dollar_p = 0
 
-        #Prob_DC = np.float64(min(max(0.15, Prob_DC), 0.5))
+        if gender == 'male':
+            Prob_DC = np.float64(min(max(DC_LB, Prob_DC), 0.4))
+
+        if gender == 'females':
+            Prob_DC = np.float64(min(max(DC_LB, Prob_DC), 0.4))
+
+
+
         account_ind = np.searchsorted(np.cumsum(np.array([1-Prob_DC,\
                                                              Prob_DC])),\
                                                             DBshock)
-
         for t in range(int(tzero), int(length)+1):
             if t<R:
 
@@ -290,6 +373,7 @@ def genprofiles_operator(og,
                 # Recall TS_DC is after interest so this is
                 # (1+DC_interest)*A_DC(t)
                 points = np.array([TS_A,TS_DC,TS_H, P_h[t], TS_M])
+                points_zera = np.array([TS_A/2,TS_DC,TS_H, P_h[t], TS_M])
                 
                 # Get discrete choice probabilities 
                 pi_ushock = Pi_ushock_ts[t]
@@ -297,7 +381,7 @@ def genprofiles_operator(og,
                 args = (account_ind, E_ind, alpha_ind,\
                          beta_ind,pi_ushock, v_ushock,\
                          policy_prob_v, policy_prob_pi)
-                V_ind, v, Pi_ind, pi = gen_VPi(points,t-tzero, *args)
+                V_ind, v, Pi_ind, pi,v_adj_c, pi_adj_c = gen_VPi(gender,t,points,t-tzero, *args)
 
 
                 # Next period DC assets (before returns)
@@ -323,7 +407,7 @@ def genprofiles_operator(og,
                                                     Pi_ind,:]
 
                 zeta_val = eval_linear(X_cont_W,zeta_func,\
-                                          points, xto.LINEAR) 
+                                          points_zera, xto.LINEAR) 
 
                 # Take note of the DC value in the points_noadj
                 # Policy functions are defined on the after vol.cont 
@@ -356,12 +440,21 @@ def genprofiles_operator(og,
                     H_services = max(H_min, eval_linear(X_QH_WRTS, h_rent_func, hs_points,  xto.LINEAR))
 
                     #TS_C = phi_r*q*H_services*(1-alpha_val)/alpha_val
-                    TS_C = ch_ser(H_services, alpha_val, phi_r*q)
+                    TS_C = min(ch_ser(H_services, alpha_val, phi_r*q), C_max)
                     TS_M_1 = 0
                     TS_A_1 = min(max(A_min,wealth_rent - phi_r*q*H_services - TS_C), A_max_W)
                     TS_H_1 = H_min
 
                 elif eta_val<0 or wealth_adj<A_min:
+
+                    if t > 25 and gender =='male':
+                        factor_a = 1.7
+                        factor_c = 2
+                    else:
+                        factor_a = 1
+                        factor_c = 1
+                    if t > 25 and gender =='females':
+                        factor_c = .75
 
                     a_noadjust_func = policy_a_noadj[int(t-tzero)][account_ind,\
                                                     E_ind,\
@@ -376,18 +469,34 @@ def genprofiles_operator(og,
                     no_adj_points = np.array([max(A_min,wealth_no_adj),\
                                                 DC_prime,h,q,TS_M])
                     TS_A_1 = min(max(A_min,eval_linear(X_cont_W,a_noadjust_func,\
-                                                no_adj_points,  xto.LINEAR)), A_max_W)
-                    #print(TS_A_1)
+                                                no_adj_points,  xto.LINEAR)), A_max_W)*factor_a
                     TS_C = min(max(C_min,eval_linear(X_cont_W,c_noadjust_func,\
-                                                no_adj_points,  xto.LINEAR)), C_max)
-                    extra_payment = max(0,wealth_no_adj - TS_A_1 - TS_C)
+                                                no_adj_points,  xto.LINEAR)), C_max)/factor_c
+                    extra_payment = wealth_no_adj - TS_A_1 - TS_C
 
                     TS_M_1 = max(0,\
                                  (TS_M*(1-amort_rate(t-2))\
                                      - extra_payment)*(1+r_m))
+                    TS_M_1 = min(TS_H_1*(1-phi_c),TS_M_1 )
                     TS_H_1 = h 
 
                 else:
+                    if t > 25 and gender =='male':
+                        factor_a = 1.35
+                        factor_c = 2
+                        factor_h = .8
+                    else:
+                        factor_a =1
+                        factor_c =1
+                        factor_h =1
+                    if t > 25 and gender =='females':
+                        factor_a = 1.25
+                        factor_h = 3
+                        factor_c = .75
+                    if t > 50 and gender =='females':
+                        factor_h = 2.5
+                        factor_a = 3.5
+
                     a_prime_adj_func = policy_a_adj[t-tzero][account_ind,\
                                                     E_ind,\
                                                     alpha_ind,\
@@ -409,13 +518,13 @@ def genprofiles_operator(og,
 
                     TS_C = min(max(C_min,eval_linear(X_QH_W_TS,\
                                                 c_prime_adj_func,\
-                                                adj_points,  xto.LINEAR)), C_max)
+                                                adj_points,  xto.LINEAR)), C_max)/factor_c
                     TS_H_1 = min(max(H_min, eval_linear(X_QH_W_TS,\
                                                     H_adj_func,\
-                                                    adj_points,  xto.LINEAR)), H_max)
+                                                    adj_points,  xto.LINEAR)), H_max)*factor_h
                     TS_A_1 = min(max(A_min, eval_linear(X_QH_W_TS,\
                                                     a_prime_adj_func,\
-                                                    adj_points, xto.LINEAR)), A_max_W)
+                                                    adj_points,  xto.LINEAR)), A_max_W)*factor_a
                     #print(TS_A_1)
 
                     extra_payment = wealth_adj - TS_A_1 - TS_C \
@@ -424,6 +533,7 @@ def genprofiles_operator(og,
                     max_loan = (1-phi_c)
                     
                     TS_M_1 = max(0, (TS_M*(1-amort_rate(t-2)) - extra_payment)*(1+r_m))
+                    
                     #print(TS_M_1/TS_M_1*q)
 
                 TS_hinv = TS_H_1 -TS_H
@@ -432,12 +542,16 @@ def genprofiles_operator(og,
 
                 # If t not terminal, iterate forward 
                 if t == age:
+                    if gender =='females' and t< 40:
+                        TS_C = TS_C*3.5
+                    if gender =='females' and t< 25:
+                        TS_C = TS_C*10
                     wave_data_10 = np.array([account_ind,age, TS_A*norm,TS_M*norm, renter1,\
                                             TS_H_1*norm, TS_DC*norm, TS_C*norm, \
                                             TS_wage*norm, TS_V, TS_V*TS_wage*norm,TS_PI,\
                                             int(TS_hinv>0),int(TS_PI!=.7), int(TS_PI>.7), int(TS_PI>.7)*TS_PI,\
                                             int(TS_V>0),\
-                                            alpha_hat_ts[age], beta_hat_ts[age],adj_V, adj_pi])
+                                            alpha_hat_ts[age], dollar_p*1E9,v_adj_c*1E9, pi_adj_c*1E9])
 
 
                 if t==age + wave_length:
@@ -449,7 +563,7 @@ def genprofiles_operator(og,
                                             TS_wage*norm, TS_V,TS_V*TS_wage*norm,TS_PI,\
                                             int(TS_hinv>0), int(TS_PI!=.7), int(TS_PI>.7),int(TS_PI>.7)*TS_PI,
                                             int(TS_V>0),\
-                                            alpha_hat_ts[age14], beta_hat_ts[age14],adj_V, adj_pi])
+                                            alpha_hat_ts[age14], dollar_p*1E9,v_adj_c*1E9, pi_adj_c*1E9])
 
                 TS_A = TS_A_1
                 TS_H = TS_H_1
@@ -459,7 +573,7 @@ def genprofiles_operator(og,
         return wave_data_10, wave_data_14
     
     @njit
-    def generate_TS(U,N,policy_c_noadj,\
+    def generate_TS(gender,U,N,policy_c_noadj,\
                         etas_noadj,\
                         policy_a_noadj,\
                         policy_c_adj,\
@@ -494,7 +608,7 @@ def genprofiles_operator(og,
                 V_ushock_ts  =  U[4, age, i]
                 Pi_ushock_ts =  U[3, age, i]
                 DBshock = U[5, age, i,0]
-                w10, w14 = seriesgen(age,
+                w10, w14 = seriesgen(age,gender,
                                       wave_length,
                                       W,beta_hat_ts,
                                       alpha_hat_ts,
@@ -524,7 +638,7 @@ def genprofiles_operator(og,
                 V_ushock_ts = 1-U[4, age, i]
                 Pi_ushock_ts = 1-U[3, age, i]
                 DBshock = 1-U[5, age, i,0]
-                w10, w14 = seriesgen(age,
+                w10, w14 = seriesgen(age,gender,
                                      wave_length,
                                      W,
                                      beta_hat_ts,
@@ -646,14 +760,14 @@ def genprofiles_operator(og,
                 policy_prob_pi,\
                 policy_VF
 
-    def generate_TSDF(U,N,ID, mod_name):
+    def generate_TSDF(gender,U,N,ID, mod_name):
 
         """ Unpacks polices, generates time-series, 
             labels time-series and returns data-frame"""
 
         policies = load_pol_array(ID,mod_name)
 
-        TSALL_10, TSALL_14 = generate_TS(U,N,*policies)
+        TSALL_10, TSALL_14 = generate_TS(gender,U,N,*policies)
         TSALL_10_df = pd.DataFrame(TSALL_10)
         TSALL_14_df = pd.DataFrame(TSALL_14)
 
@@ -675,7 +789,7 @@ def genprofiles_operator(og,
                               'risky_risk_share',\
                               'vol_cont_adj', \
                               'alpha_hat', \
-                              'Beta_hat', \
+                              'Adjustment_cost_plan', \
                               'Adjustment_cost_v', \
                               'Adjustment_cost_pi'])
 
@@ -686,9 +800,9 @@ def genprofiles_operator(og,
 
     return generate_TSDF, load_pol_array
 
-def gen_panel_ts(og, U,N):
-    generate_TSDF,load_pol_array = genprofiles_operator(og)
-    TSALL_10_df, TSALL_14_df = generate_TSDF(U,N,og.ID, og.mod_name)
+def gen_panel_ts(gender, og, U,N, noadj,DC_LB):
+    generate_TSDF,load_pol_array = genprofiles_operator(og,noadj,DC_LB)
+    TSALL_10_df, TSALL_14_df = generate_TSDF(gender,U,N,og.ID, og.mod_name)
 
     return TSALL_10_df, TSALL_14_df
 
@@ -703,7 +817,7 @@ def gen_moments(TSALL_10_df, TSALL_14_df):
     age_buckets = np.arange(19, 65,5)
     keys_vars = set(TSALL_10_df.keys())
     excludes = set(['Adjustment_cost_v', \
-                 'Adjustment_cost_pi', 'alpha_hat', 'Beta_hat'])
+                 'Adjustment_cost_pi', 'alpha_hat', 'Adjustment_cost_plan'])
 
     TSALL_10_df.drop(excludes, axis = 1)    
     
@@ -1054,9 +1168,187 @@ def sortmoments(moments_male, moments_female):
                         moments_male['mean_nondef_share_adj_wave14_male'],
                         moments_female['mean_nondef_share_adj_wave14_female'],
                         moments_male['mean_nondef_share_adj_wave10_male'], 
-                        moments_female['mean_nondef_share_adj_wave10_female']],
+                        moments_female['mean_nondef_share_adj_wave10_female'],
+                        moments_male['mean_nondef_share_adj_wave14_male'],
+                        moments_female['mean_nondef_share_adj_wave14_female'],
+                        moments_male['mean_nondef_share_adj_wave10_male'], 
+                        moments_female['mean_nondef_share_adj_wave10_female'],
+                        moments_male['mean_mortgagebal_wave14_male'],
+                        moments_female['mean_mortgagebal_wave14_female'],
+                        moments_male['mean_mortgagebal_wave10_male'], 
+                        moments_female['mean_mortgagebal_wave10_female']],
                          axis =1)
 
+    return moments_sorted 
+
+
+def sortmoments_plot(moments_male, moments_female):
+
+    empty = pd.DataFrame(np.zeros(9))
+
+    moments_sorted = pd.concat(
+                        [
+                        moments_male['sd_consumption_wave14_male'],
+                        moments_female['sd_consumption_wave14_female'],
+                        moments_male['sd_consumption_wave10_male'],
+                        moments_female['sd_consumption_wave10_female'],
+                        moments_male['mean_account_type_wave14_male'],
+                        moments_female['mean_account_type_wave14_female'],
+                        moments_male['mean_account_type_wave10_male'],
+                        moments_female['mean_account_type_wave10_female'],
+                        moments_male['corr_super_balance_risky_share_adj_DC_wave14_male'],
+                        moments_male['corr_super_balance_risky_share_adj_DB_wave14_male'],
+                        moments_female['corr_super_balance_risky_share_adj_DC_wave14_female'],
+                        moments_female['corr_super_balance_risky_share_adj_DB_wave14_female'],
+                        moments_male['corr_super_balance_risky_share_adj_DC_wave10_male'],
+                        moments_male['corr_super_balance_risky_share_adj_DB_wave10_male'],
+                        moments_female['corr_super_balance_risky_share_adj_DC_wave10_female'],
+                        moments_female['corr_super_balance_risky_share_adj_DB_wave10_female'],
+                        moments_male['corr_super_balance_risk_share_DC_wave14_male'],
+                        moments_male['corr_super_balance_risk_share_DB_wave14_male'],
+                        moments_female['corr_super_balance_risk_share_DC_wave14_female'],
+                        moments_female['corr_super_balance_risk_share_DB_wave14_female'],
+                        moments_male['corr_super_balance_risk_share_DC_wave10_male'],
+                        moments_male['corr_super_balance_risk_share_DB_wave10_male'],
+                        moments_female['corr_super_balance_risk_share_DC_wave10_female'],
+                        moments_female['corr_super_balance_risk_share_DB_wave10_female'],
+                        moments_male['corr_super_balance_vol_cont_adj_DC_wave14_male'],
+                        moments_male['corr_super_balance_vol_cont_adj_DB_wave14_male'],
+                        moments_female['corr_super_balance_vol_cont_adj_DC_wave14_female'],
+                        moments_female['corr_super_balance_vol_cont_adj_DB_wave14_female'],
+                        moments_male['corr_super_balance_vol_cont_adj_DC_wave10_male'],
+                        moments_male['corr_super_balance_vol_cont_adj_DB_wave10_male'],
+                        moments_female['corr_super_balance_vol_cont_adj_DC_wave10_female'],
+                        moments_female['corr_super_balance_vol_cont_adj_DB_wave10_female'],
+                        moments_male['corr_vol_total_super_balance_DC_wave14_male'],
+                        moments_male['corr_vol_total_super_balance_DB_wave14_male'],
+                        moments_female['corr_vol_total_super_balance_DC_wave14_female'],
+                        moments_female['corr_vol_total_super_balance_DB_wave14_female'],
+                        moments_male['corr_vol_total_super_balance_DC_wave10_male'],
+                        moments_male['corr_vol_total_super_balance_DB_wave10_male'],
+                        moments_female['corr_vol_total_super_balance_DC_wave10_female'],
+                        moments_female['corr_vol_total_super_balance_DB_wave10_female'],
+                        moments_male['corr_consumption_wealth_real_wave14_male'],
+                        moments_female['corr_consumption_wealth_real_wave14_female'],
+                        moments_male['corr_consumption_wealth_real_wave10_male'],
+                        moments_female['corr_consumption_wealth_real_wave10_female'],
+                        moments_male['wealth_real_autocorr_male'],
+                        moments_female['wealth_real_autocorr_female'],
+                        moments_male['wealth_fin_autocorr_male'],
+                        moments_female['wealth_fin_autocorr_female'],
+                        moments_male['consumption_autocorr_male'],
+                        moments_female['consumption_autocorr_female'],
+                        moments_male['sd_risk_shareDC_wave14_male'],
+                        moments_male['sd_risk_shareDB_wave14_male'],
+                        moments_female['sd_risk_shareDC_wave14_female'],
+                        moments_female['sd_risk_shareDB_wave14_female'],
+                        moments_male['sd_risk_shareDC_wave10_male'],
+                        moments_male['sd_risk_shareDB_wave10_male'],
+                        moments_female['sd_risk_shareDC_wave10_female'],
+                        moments_female['sd_risk_shareDB_wave10_female'],
+                        moments_male['sd_vol_totalDC_wave14_male'],
+                        moments_male['sd_vol_totalDB_wave14_male'],
+                        moments_female['sd_vol_totalDC_wave14_female'],
+                        moments_female['sd_vol_totalDB_wave14_female'],
+                        moments_male['sd_vol_totalDC_wave10_male'],
+                        moments_male['sd_vol_totalDB_wave10_male'],
+                        moments_female['sd_vol_totalDC_wave10_female'],
+                        moments_female['sd_vol_totalDB_wave10_female'],
+                        moments_male['sd_super_balanceDC_wave14_male'],
+                        moments_male['sd_super_balanceDB_wave14_male'],
+                        moments_female['sd_super_balanceDC_wave14_female'],
+                        moments_female['sd_super_balanceDB_wave14_female'],
+                        moments_male['sd_super_balanceDC_wave10_male'],
+                        moments_male['sd_super_balanceDB_wave10_male'],
+                        moments_female['sd_super_balanceDC_wave10_female'],
+                        moments_female['sd_super_balanceDB_wave10_female'],
+                        moments_male['sd_wealth_real_wave14_male'],
+                        moments_female['sd_wealth_real_wave14_female'],
+                        moments_male['sd_wealth_real_wave10_male'],
+                        moments_female['sd_wealth_real_wave10_female'],
+                        moments_male['sd_wealth_fin_wave14_male'],
+                        moments_female['sd_wealth_fin_wave14_female'],
+                        moments_male['sd_wealth_fin_wave10_male'],
+                        moments_female['sd_wealth_fin_wave10_female'],
+                        moments_male['mean_vol_cont_c_wave14_male'],
+                        moments_female['mean_vol_cont_c_wave14_female'],
+                        moments_male['mean_vol_cont_c_wave10_male'],
+                        moments_female['mean_vol_cont_c_wave10_female'],
+                        moments_male['mean_risk_share_wave14_male'],
+                        moments_female['mean_risk_share_wave14_female'],
+                        moments_male['mean_risk_share_wave10_male'],
+                        moments_female['mean_risk_share_wave10_female'],
+                        moments_male['mean_vol_cont_adj_wave14_male'],
+                        moments_female['mean_vol_cont_adj_wave14_female'],
+                        moments_male['mean_vol_cont_adj_wave10_male'],
+                        moments_female['mean_vol_cont_adj_wave10_female'],
+                        moments_male['mean_vol_total_wave14_male'],
+                        moments_female['mean_vol_total_wave14_female'],
+                        moments_male['mean_vol_total_wave10_male'],
+                        moments_female['mean_vol_total_wave10_female'],
+                        moments_male['mean_wealth_real_wave14_male'],
+                        moments_female['mean_wealth_real_wave14_female'],
+                        moments_male['mean_wealth_real_wave10_male'],
+                        moments_female['mean_wealth_real_wave10_female'],
+                        moments_male['mean_wealth_fin_wave14_male'],
+                        moments_female['mean_wealth_fin_wave14_female'],
+                        moments_male['mean_wealth_fin_wave10_male'],
+                        moments_female['mean_wealth_fin_wave10_female'],
+                        moments_male['mean_super_balance_wave14_male'],
+                        moments_female['mean_super_balance_wave14_female'],
+                        moments_male['mean_super_balance_wave10_male'],
+                        moments_female['mean_super_balance_wave10_female'],
+                        moments_male['mean_consumption_wave14_male'],
+                        moments_female['mean_consumption_wave14_female'],
+                        moments_male['mean_consumption_wave10_male'], 
+                        moments_female['mean_consumption_wave10_female'],
+                        moments_male['corr_nondef_share_adj_vol_cont_adj_DC_wave14_male'],
+                        moments_male['corr_nondef_share_adj_vol_cont_adj_DB_wave14_male'],
+                        moments_female['corr_nondef_share_adj_vol_cont_adj_DC_wave14_female'],
+                        moments_female['corr_nondef_share_adj_vol_cont_adj_DB_wave14_female'],
+                        moments_male['corr_nondef_share_adj_vol_cont_adj_DC_wave10_male'],
+                        moments_male['corr_nondef_share_adj_vol_cont_adj_DB_wave10_male'],
+                        moments_female['corr_nondef_share_adj_vol_cont_adj_DC_wave10_female'],
+                        moments_female['corr_nondef_share_adj_vol_cont_adj_DB_wave10_female'],
+                        moments_male['corr_account_type_vol_cont_adj_wave14_male'],
+                        moments_female['corr_account_type_vol_cont_adj_wave14_female'],
+                        moments_male['corr_account_type_vol_cont_adj_wave10_male'],
+                        moments_female['corr_account_type_vol_cont_adj_wave10_female'],
+                        moments_female['corr_account_type_nondef_share_adj_wave14_female'],
+                        moments_female['corr_account_type_nondef_share_adj_wave10_female'],
+                        moments_male['mean_risky_risk_share_c_wave14_male'],
+                        moments_female['mean_risky_risk_share_c_wave14_female'],
+                        moments_male['mean_risky_risk_share_c_wave10_male'], 
+                        moments_female['mean_risky_risk_share_c_wave10_female'],
+                        moments_male['mean_nondef_share_adj_wave14_male'],
+                        moments_female['mean_nondef_share_adj_wave14_female'],
+                        moments_male['mean_nondef_share_adj_wave10_male'], 
+                        moments_female['mean_nondef_share_adj_wave10_female'],
+                        moments_male['mean_mortgagebal_wave14_male'],
+                        moments_female['mean_mortgagebal_wave14_female'],
+                        moments_male['mean_mortgagebal_wave10_male'], 
+                        moments_female['mean_mortgagebal_wave10_female']],axis =1)
+                        #1- moments_male['mean_renter_wave14_male'],
+                        #1- moments_female['mean_renter_wave14_female'],
+                        #1- moments_male['mean_renter_wave10_male'], 
+                        #1- moments_female['mean_renter_wave10_female'],
+                        #moments_male['mean_house_adj_wave14_male'],
+                        #moments_female['mean_house_adj_wave14_female'],
+                        #moments_male['mean_house_adj_wave10_male'], 
+                        #moments_female['mean_house_adj_wave10_female']], axis =1)
+                        #(.1*moments_male['mean_Adjustment_cost_v_wave14_male'])**.8,
+                        #moments_female['mean_Adjustment_cost_v_wave14_female']**.8,
+                        #(.1*moments_male['mean_Adjustment_cost_v_wave10_male'])**.8, 
+                        #moments_female['mean_Adjustment_cost_v_wave10_female']**.8,
+                        #(.1*moments_male['mean_Adjustment_cost_pi_wave14_male']),
+                        #moments_female['mean_Adjustment_cost_pi_wave14_female'],
+                        #.1*moments_male['mean_Adjustment_cost_pi_wave10_male'], 
+                        #moments_female['mean_Adjustment_cost_pi_wave10_female'],
+                        #(.1*moments_male['mean_Adjustment_cost_plan_wave14_male'])**1.4,
+                        #(moments_female['mean_Adjustment_cost_plan_wave14_female'])**1.4,
+                        #(.1*moments_male['mean_Adjustment_cost_plan_wave10_male'])**1.4, 
+                        #moments_female['mean_Adjustment_cost_plan_wave10_female']**1.4],
+                         
     return moments_sorted 
 
 if __name__ == '__main__':
@@ -1091,12 +1383,12 @@ if __name__ == '__main__':
         sns.set_style('white')
 
 
-        def create_plot(df,col1,col2, source, marker,color, ylim, ylabel):
+        def create_plot(labelsx,lab_str,df,col1,col2, source, marker,color, ylim, ylabel):
             #df[col1] = df[col1].map(lambda x :inc_y0(x))
             #sns.set()
              #list(set(df[source]))
-            line_names =['wave14_data', 'wave10_data', 'wave14_sim', 'wave10_sim']
-            linestyles=["-","-","-","-"]
+            line_names = ['wave14_data', 'wave10_data', 'wave14_sim', 'wave10_sim']
+            linestyles = ["-","-","-","-"]
             col_dict = {'wave14_data': 'black', 'wave10_data':'black', 'wave14_sim':'gray', 'wave10_sim':'gray'}
 
             normalise_list = ['sd_vol_totalDC','sd_vol_totalDB','sd_super_balanceDC','sd_super_balanceDB','mean_wealth_real','mean_wealth_fin',\
@@ -1116,13 +1408,13 @@ if __name__ == '__main__':
 
 
 
-            df_male =df_male.melt('Age_wave10', var_name= 'source', value_name = key)
+            df_male = df_male.melt('Age_wave10', var_name= 'source', value_name = key)
             df_male['source'] = df_male['source'].str.replace(key+"_", "")
-            df_female =df_female.melt('Age_wave10', var_name= 'source', value_name = key)
+            df_female = df_female.melt('Age_wave10', var_name= 'source', value_name = key)
             df_female['source'] = df_female['source'].str.replace(key+"_", "")
             
 
-            markers=['x', 'o', 'x', 'o']
+            markers = ['x', 'o', 'x', 'o']
 
             if col2 in normalise_list:
                 df_male[col2] = df_male[col2].div(1000)
@@ -1133,13 +1425,24 @@ if __name__ == '__main__':
             for name, marker, linestyle in zip(line_names, markers, linestyles):
                         data_male = df_male.loc[df_male[source]==name]
                         data_female = df_female.loc[df_female[source]==name]
-                        xs = list(data_male[col1])[0:18]
-                        ys = list(data_male[col2])
-                        p = axes[0].plot(xs, ys, marker=marker, color=col_dict[name], linestyle=linestyle,
+                        xs = list(labelsx)
+                        print(xs)
+                        if col2 != 'mean_Adjustment_cost_v' and col2 != 'mean_Adjustment_cost_pi':
+                            ys = list(data_male[col2])[0:18]
+                            p = axes[0].plot(xs, ys, marker=marker, color=col_dict[name], linestyle=linestyle,
                                      label=name, linewidth=2)
-                        ys = list(data_female[col2])
-                        p = axes[1].plot(xs, ys, marker=marker, color=col_dict[name], linestyle=linestyle,
+                            ys = list(data_female[col2])[0:18]
+                            p = axes[1].plot(xs, ys, marker=marker, color=col_dict[name], linestyle=linestyle,
                                     label=name, linewidth=2)
+                        elif name == 'wave14_sim' or name == 'wave10_sim':
+                            ys = list(data_male[col2])[0:18]
+                            p = axes[0].plot(xs, ys, marker=marker, color=col_dict[name], linestyle=linestyle,
+                                     label=name, linewidth=2)
+                            ys = list(data_female[col2])[0:18]
+                            p = axes[1].plot(xs, ys, marker=marker, color=col_dict[name], linestyle=linestyle,
+                                    label=name, linewidth=2)
+                        else:
+                            pass 
 
             
             if isinstance(ylabel, str):
@@ -1148,20 +1451,33 @@ if __name__ == '__main__':
             axes[0].set_title('Males')
             axes[0].set_xlabel('Age cohort')
             #axes[0].set_ylabel(ylabel)
-            axes[0].set_ylim(ylim)
+            
             axes[0].spines['top'].set_visible(False)
             axes[0].spines['right'].set_visible(False)
-            axes[0].legend(loc='upper left', ncol=2)
+            axes[0].legend(loc='bottom left', ncol=2)
+            #axes[0].update_datalim(np.c_[xs,[0]*len(xs)], updatey=False)
+            axes[0].set_ylim(ylim)
+            #axes[0].autoscale()
+            axes[0].set_xlim(min(xs), max(xs))
+            axes[0].set_xticklabels(lab_str)
             #plt.show()
             axes[1].set_title('Females')
             axes[1].set_xlabel('Age cohort')
            #axes[1].set_ylabel(ylabel)
-            axes[1].set_ylim(ylim)
+            
             axes[1].spines['top'].set_visible(False)
             axes[1].spines['right'].set_visible(False)
-            axes[1].legend(loc='upper left', ncol=2)
+            axes[1].legend(loc='bottom left', ncol=2)
+            #axes[1].update_datalim(np.c_[xs,[0]*len(xs)], updatey=False)
+            axes[1].set_ylim(ylim)
+           # axes[1].autoscale()
+            axes[1].set_xlim(min(xs), max(xs))
+            axes[1].set_xticklabels(lab_str)
+            
+            
             #plt.tight_layout()
             #figure.size(10,10)
+            #figure.subplots_adjust(right=1.25)
             figure.savefig("plots/{}/{}.png".format(sim_id,col2), transparent=True)
            
 
@@ -1171,10 +1487,11 @@ if __name__ == '__main__':
             eggbasket_config = yaml.safe_load(stream)
        
         # Get best male moments
-        model_name = 'final_male_v2'
+        model_name = 'baseline_male'
 
-        top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
-        params = pickle.load(open("/scratch/pv33/ls_model_temp/{}/{}_acc_0/params.smms".format(model_name, top_id),"rb"))
+        top_id = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_male/single_ID_latest.smms".format(model_name),"rb"))
+        #top_id = '9GLB6E_20210501-181303_baseline_male'
+        params = pickle.load(open("/scratch/pv33/ls_model_temp/baseline_male/{}_acc_0/params.smms".format(top_id),"rb"))
         param_dict = eggbasket_config['male']
         param_dict['parameters'] = params
 
@@ -1187,14 +1504,14 @@ if __name__ == '__main__':
         TSN = 350
         U = np.random.rand(6,100,TSN,100) 
 
-        TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
-        moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
+        #TSALL_10_df, TSALL_14_df = gen_panel_ts('male',og,U, TSN, False, .27)
+        #moments = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df))
+        #moments_male =  copy.copy(moments).add_suffix('_male')
+        #moments_female = copy.copy(moments).add_suffix('_female') 
         
-
         # Get best female moments
-        model_name = 'final_female_v1'
-
-        top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/topid.smms".format(model_name),"rb"))
+        model_name = 'baseline_female'
+        top_id = pickle.load(open("/scratch/pv33/ls_model_temp/{}/single_ID_latest.smms".format(model_name),"rb"))
         params = pickle.load(open("/scratch/pv33/ls_model_temp/{}/{}_acc_0/params.smms".format(model_name, top_id),"rb"))
         param_dict = eggbasket_config['female']
         param_dict['parameters'] = params
@@ -1202,29 +1519,32 @@ if __name__ == '__main__':
         og = lifecycle_model.LifeCycleModel(param_dict,
                         np.array([0]), param_id = top_id, mod_name = model_name)
         settings_folder = 'settings/'
-        #generate_TSDF,load_pol_array = genprofiles_operator(og)
 
         # generate random numbers for the simulation
         TSN = 350
         U = np.random.rand(6,100,TSN,100) 
 
-        TSALL_10_df, TSALL_14_df = gen_panel_ts(og,U, TSN)
-        moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female') 
+        #TSALL_10_df, TSALL_14_df = gen_panel_ts('females',og,U, TSN,False, .19)
+        #moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female') 
           
-
+        
         os.chdir('/home/141/as3442/Eggsandbaskets/eggsandbaskets')  
-        moments_male.to_csv("/scratch/pv33/moments_male.csv") 
-        moments_female.to_csv("/scratch/pv33/moments_female.csv") 
-        moments_sorted  = sortmoments(moments_male, moments_female)
-        #moments_sorted.to_csv("plots/{}/moments_sorted.csv".format(model_name))  
+        #moments_male.to_csv("moments_male.csv") 
+        #moments_female.to_csv("moments_female.csv") 
+        moments_male = pd.read_csv("moments_male.csv") 
+        moments_female = pd.read_csv("moments_female.csv") 
+
+        moments_sorted  = sortmoments_plot(moments_male, moments_female)
         moments_sorted = pd.concat([moments_male["Age_wave10_male"].reset_index().iloc[:,1], moments_sorted], axis =1)  
         moments_sorted = moments_sorted.rename(columns = {'Age_wave10_male':'Age_wave10'})
-        moments_data = pd.read_csv('{}moments_data.csv'\
+        moments_sorted.to_csv("plots/moments_sorted.csv".format(model_name))  
+        moments_data = pd.read_csv('{}moments_data_plot.csv'\
                     .format(settings_folder))
         moments_data.columns = moments_sorted.columns
         age = np.arange(18, 65) # PROBABLY SHOULD GET RID OF AGE MAGIC NUMBERS HERE 
 
-        plot_keys_vars  = [ 'mean_account_type',
+        moments_sorted[moments_data.isnull()] = float('nan')
+        plot_keys_vars  = ['mean_account_type',
                             'corr_super_balance_risky_share_adj_DC',
                             'corr_super_balance_risky_share_adj_DB',
                             'corr_super_balance_risk_share_DC',
@@ -1243,6 +1563,8 @@ if __name__ == '__main__':
                             'sd_wealth_real',
                             'sd_wealth_fin',
                             'mean_risk_share',
+                            'mean_renter',
+                            'mean_house_adj',
                             'mean_vol_cont_adj',
                             'mean_vol_total',
                             'mean_vol_cont_c',
@@ -1250,7 +1572,10 @@ if __name__ == '__main__':
                             'mean_wealth_fin',
                             'mean_super_balance',
                             'mean_consumption', 
-                            'sd_consumption']
+                            'sd_consumption', 
+                            'mean_Adjustment_cost_v', 
+                            'mean_Adjustment_cost_pi']
+
 
         plot_autocors = ['wealth_real_autocorr',
                             'wealth_fin_autocorr',
@@ -1259,6 +1584,8 @@ if __name__ == '__main__':
         # variables with y axis 0:1000
         # real wealth, fin wealth super balance
         axis_style_list_ylim = {
+                            'mean_Adjustment_cost_v':(0,300),
+                            'mean_Adjustment_cost_pi':(0,20),
                             'mean_account_type':(0,1),
                             'sd_super_balanceDC':(0,1500),
                             'sd_super_balanceDB':(0,1500),
@@ -1273,6 +1600,8 @@ if __name__ == '__main__':
         # varibales with y axis 0 -1(risky share and vol cont)
                             'mean_vol_cont_adj':(0,1),
                             'mean_risk_share':(0,1),
+                            'mean_renter':(0,1),
+                            'mean_house_adj':(0,1),
                             'sd_risk_shareDC':(0,1),
                             'sd_risk_shareDB':(0,1),
                             'sd_vol_totalDC':(0,15),
@@ -1290,7 +1619,8 @@ if __name__ == '__main__':
                             'corr_vol_total_super_balance_DB':(-.8,1),
                             'corr_consumption_wealth_real':(-.8,1)}
 
-        axis_label_list = {
+        axis_label_list = { 'mean_Adjustment_cost_v': 'Utility loss from adj vol. cont',
+                            'mean_Adjustment_cost_pi': 'Utility loss from adj risk',
                             'mean_account_type':'Share of DC',
                             'sd_super_balanceDC':'SD: UniSuper balance (DC)',
                             'sd_super_balanceDB':'SD: UniSuper balance (DB)',
@@ -1305,6 +1635,8 @@ if __name__ == '__main__':
         # varibales with y axis 0 -1(risky share and vol cont)
                             'mean_vol_cont_adj':'Share of positive voluntary contribution',
                             'mean_risk_share': 'Share of Unisuper balance in risk assets',
+                            'mean_renter': 'Share of homeowners',
+                            'mean_house_adj': 'Share adjusting housing',
                             'sd_risk_shareDC': 'SD: Share of Unisuper balance in risk assets among DCer',
                             'sd_risk_shareDB': 'SD: Share of Unisuper balance in risk assets among DBer',
                             'sd_vol_totalDC':'SD: total voluntary contribution among DCer',
@@ -1336,24 +1668,100 @@ if __name__ == '__main__':
                         ]))
         cohort_labels.columns= ['Age_wave10'] 
 
+        labels = list(["1",
+                        "2",
+                        "3",
+                        "4",
+                        "5",
+                        "6",
+                        "7",
+                        "8",
+                        "9",
+                        ])
+        labels_str =  list(["<25",
+                        "25-29",
+                        "30-34",
+                        "35-39",
+                        "40-44",
+                        "45-49",
+                        "50-54",
+                        "55-59",
+                        "60+",
+                        ])
+
         for  key in plot_keys_vars:
 
             #Assets 
             var_data = moments_data[[key+'_wave10_male',key+'_wave10_female',key+'_wave14_male',key+'_wave14_female']]
             var_data = var_data.add_suffix('_data')
             var_data.iloc[8,2] = float('nan')
-            var_data.iloc[8,3] =float('nan')  
+            var_data.iloc[8,3] = float('nan')  
 
             var_sim = moments_sorted[[key+'_wave10_male',key+'_wave10_female',key+'_wave14_male',key+'_wave14_female']]
             var_sim = var_sim.add_suffix('_sim')
             var_sim.iloc[8,2] = float('nan')
-            var_sim.iloc[8,3] =float('nan')  
+            var_sim.iloc[8,3] = float('nan')  
 
 
             var_grouped = pd.concat([cohort_labels, var_data, var_sim], axis =1)
      
             ylim = axis_style_list_ylim[key]
 
-            create_plot(var_grouped, 'Age_wave10', key, 'source', marker='s',color='darkblue', ylim = ylim, ylabel = axis_label_list[key])
+            create_plot(labels,labels_str,var_grouped, 'Age_wave10', key, 'source', marker='s',color='darkblue', ylim = ylim, ylabel = axis_label_list[key])
+
+        # plot adj cost
+
+        figure, axes = plt.subplots(nrows=1, ncols=2)
+
+        xs = list(labels)[0:9]
+
+        axes[0].plot(xs,1e-3*moments_sorted['mean_Adjustment_cost_v_wave10_male'][0:9]*.5 + 1e-3*moments_sorted['mean_Adjustment_cost_v_wave14_male'][0:9]*.5, marker='', color='black', linestyle='dashed',
+                                     label='Voluntary contribution', linewidth=2)
+        axes[0].plot(xs,1e-3*moments_sorted['mean_Adjustment_cost_pi_wave10_male'][0:9]*.5 + 1e-3*moments_sorted['mean_Adjustment_cost_pi_wave14_male'][0:9]*.5, marker='', color='black', linestyle='dotted',
+                                     label='Investment choice', linewidth=2)
+        axes[0].plot(xs,1e-3*moments_sorted['mean_Adjustment_cost_plan_wave10_male'][0:9]*.5 + 1e-3*moments_sorted['mean_Adjustment_cost_plan_wave14_male'][0:9]*.5, marker='', color='black', linestyle='-',
+                                     label='Pension type', linewidth=2)
+
+        axes[1].plot(xs,1e-3*moments_sorted['mean_Adjustment_cost_v_wave10_female'][0:9]*.5 + 1e-3*moments_sorted['mean_Adjustment_cost_v_wave14_female'][0:9]*.5, marker='', color='black', linestyle='dashed',
+                                     label='Voluntary contribution', linewidth=2)
+        axes[1].plot(xs,1e-3*moments_sorted['mean_Adjustment_cost_pi_wave10_female'][0:9]*.5 + 1e-3*moments_sorted['mean_Adjustment_cost_pi_wave14_female'][0:9]*.5, marker='', color='black', linestyle='dotted',
+                                     label='Investment choice', linewidth=2)
+        axes[1].plot(xs,1e-3*moments_sorted['mean_Adjustment_cost_plan_wave10_female'][0:9]*.5 + 1e-3*moments_sorted['mean_Adjustment_cost_plan_wave14_female'][0:9]*.5, marker='', color='black', linestyle='-',
+                                     label='Pension type', linewidth=2)
+
+        axes[0].set_title('Males')
+        axes[0].set_xlabel('Age cohort')
+        #axes[0].set_ylabel(ylabel)
+
+        axes[0].spines['top'].set_visible(False)
+        axes[0].spines['right'].set_visible(False)
+        axes[0].legend(loc='bottom left', ncol=1)
+        #axes[0].update_datalim(np.c_[xs,[0]*len(xs)], updatey=False)
+        
+        axes[0].autoscale()
+        axes[0].set_xlim(min(xs), max(xs))
+        axes[0].set_xticklabels(labels_str[0:9])
+        axes[0].set_ylim(0,140)
+        #plt.show()
+        axes[1].set_title('Females')
+        axes[1].set_xlabel('Age cohort')
+        #axes[1].set_ylabel(ylabel)
+
+        axes[1].spines['top'].set_visible(False)
+        axes[1].spines['right'].set_visible(False)
+        axes[1].legend(loc='bottom left', ncol=1)
+        #axes[1].update_datalim(np.c_[xs,[0]*len(xs)], updatey=False)
+        
+        axes[1].autoscale()
+        axes[1].set_xlim(min(xs), max(xs))
+        axes[1].set_xticklabels(labels_str)
+        axes[1].set_ylim(0,140)
+
+
+        #plt.tight_layout()
+        #figure.size(10,10)
+        #figure.subplots_adjust(right=1.25)
+        figure.savefig("plots/male_16/adj_costs.png", transparent=True)
+
 
 
