@@ -847,12 +847,14 @@ def worker_solver_factory(og,
 	@njit
 	def interp_pol_adj(A_prime,
 					   C,
+					   eta_adj, 
 					   wealth_bar):
 		"""Interpolates no adjust policy functions using from endogenous
 		grids."""
 
 		A_prime_adj_reshape = reshape_make_h_last(A_prime)
 		C_adj = reshape_make_h_last(C)
+		eta_adj_reshape = reshape_make_h_last(eta_adj)
 		wealth_bar_reshape = reshape_make_h_last(wealth_bar)
 
 		# New pol funcs which will be interpolated over uniform
@@ -864,6 +866,9 @@ def worker_solver_factory(og,
 			= np.empty((int(len(X_W_bar_hdjex_ind) / grid_size_HS),
 						int(grid_size_A)))
 		c_prime_adj_1\
+			= np.empty((int(len(X_W_bar_hdjex_ind) / grid_size_HS),
+						int(grid_size_A)))
+		eta_adj_prime_1\
 			= np.empty((int(len(X_W_bar_hdjex_ind) / grid_size_HS),
 						int(grid_size_A)))
 
@@ -881,9 +886,11 @@ def worker_solver_factory(og,
 			
 			c_clean = C_adj[i][~np.isnan(wealth_bar_reshape[i])]
 			c_x = np.take(c_clean, np.argsort(wealth_x))
-			#print(c_x)
+			
+			eta_clean = eta_adj_reshape[i][~np.isnan(wealth_bar_reshape[i])]
+			eta_x = np.take(eta_clean, np.argsort(wealth_x))
+
 			wealth_xs = np.sort(wealth_x)
-			#print(assts_x)
 
 			assets_prime_adj_1[i] = interp_as(wealth_xs, assts_x, W_W)
 			assets_prime_adj_1[i][assets_prime_adj_1[i] <= 0] = A_min
@@ -896,6 +903,9 @@ def worker_solver_factory(og,
 			H_prime_adj_1[i] = interp_as(wealth_xs, h_x, W_W)
 			H_prime_adj_1[i][H_prime_adj_1[i] <= 0] = H_min
 			H_prime_adj_1[i][H_prime_adj_1[i] == np.nan] = H_min
+
+			eta_adj_prime_1[i] = interp_as(wealth_xs, eta_x, W_W)
+
 
 		H_adj = H_prime_adj_1.reshape((len(DB), grid_size_W,
 									   grid_size_alpha,
@@ -922,17 +932,29 @@ def worker_solver_factory(og,
 												 grid_size_M,
 												 grid_size_A))
 
-		return C_adj, H_adj, Aprime_adj
+		eta_adj_prime = eta_adj_prime_1.reshape((len(DB), grid_size_W,
+												 grid_size_alpha,
+												 grid_size_beta,
+												 len(Pi),
+												 grid_size_DC,
+												 grid_size_Q,
+												 grid_size_M,
+												 grid_size_A))
+
+		return C_adj, H_adj, Aprime_adj, eta_adj_prime
 
 	@njit
 	def eval_policy_W_noadj(t,
 							mort_func,
 							UC_prime_func,
-							UC_prime_H_func,
 							UC_prime_M_func,
-							UF_prime_func,
+							VF,
 							a,b):
-		"""Time t worker policy function evaluation.
+		
+		"""Time t worker policy function evaluation using EGM 
+			for non-adjusting home owners
+
+			EGM evauates time t liquid assets via inverse Euler 
 
 		Parameters
 		----------
@@ -942,34 +964,21 @@ def worker_solver_factory(og,
 			M_t+1 function
 		UC_prime_func : flat 9D array
 				t+1 expected value of u_1(c,h)
-		UC_prime_H_func: flat 9D array
-				t+1 RHS of Euler equation wrt to H_t
-		UC_prime_HFC_func:  flat 9D array
-				t+1 RHS fixed cost of adj
 		UC_prime_M_func: flat 9D array
 				t+1 RHS of Euler equation wrt to M_t
-		UF_prime_func: flat 9D array
-				t+1 utility
-		a
-		b
+		VF: flat 9D array
+		 	 t+1 RHS Value function (undiscounted)
+		a: int
+		b: int
 
 		Returns
 		-------
-		C_noadj: 9D array
-			no adjust a_t+1 policy
-		etas_primes: 9D array
-			no adjust multiplier (equation x)
-		assets_prime_adj: 8D array
-			adjust policy
-		C_prime_adj: 8D array
-			adjust policy for consumption
-		H_prime_adj: 8D array
-			adjust policy for housing
+
 
 
 		Notes
 		-----
-		Expectation of UC_prime_func and UC_prime_eta_func defined on:
+		Expectation of UC_prime_func and VF defined on:
 
 				- time t E, alpha, beta, pi, house price
 				- time t+1 liquid assets (before returns)
@@ -1013,28 +1022,27 @@ def worker_solver_factory(og,
 		How does min_const_FOC work when housing is adjusted down?
 		"""
 
-		# gen empty grids to fill with
-		# endogenous values of assets_l (liq assets inc. wage)
-		# eta and consumption
+		# gen. empty grids to fill with endogenous values of:
+		#  - assets_l (liq assets inc. wage)
+		#  - eta (continuation value )
+		#  - consumption
 
 		assets_l = np.zeros(len(X_all_hat_ind[a:b]))
 		etas = np.zeros(len(X_all_hat_ind[a:b]))
 		cons_l = np.zeros(len(X_all_hat_ind[a:b]))
 
-		# Reshape UC functions so they can be indexed by current
+		# Reshape t+1 functions so they can be indexed by current
 		# period states and be made into a function of M_t+1
 		UC_prime_func_ex = UC_prime_func.reshape(all_state_shape)
-		UC_prime_H_func_ex = UC_prime_H_func.reshape(all_state_shape)
-		#UC_prime_HFC_func_ex = UC_prime_HFC_func.reshape(all_state_shape)
+		V_func_ex = UC_prime_H_func.reshape(all_state_shape)
 		UC_prime_M_func_ex = UC_prime_M_func.reshape(all_state_shape)
-		UF_prime_func_ex = UF_prime_func.reshape(all_state_shape)
 
 		for i in range(a,b):
 			# Loop through each exogenous grid point
 			# recall h is H_t i.e. housing *after* depreciation at t
 			# i.e. housing that goes into utility at t
 			# a_prime is liquid asset taken into next period
-			# q is period t price
+			# q is period t price of housing 
 
 			h = H[X_all_hat_ind[i][7]] * (1 - delta_housing)
 			a_prime = A[X_all_hat_ind[i][5]]
@@ -1055,23 +1063,18 @@ def worker_solver_factory(og,
 			beta = beta_hat[beta_ind]
 			alpha_housing = alpha_hat[alpha_ind]
 							   
-
 			# get the next period U_prime values
 			mfunc_ucprime = UC_prime_func_ex[DB_ind,
 											 E_ind, alpha_ind,
 											 beta_ind, Pi_ind,
 											 :, adc_ind, h_ind,
 											 q_ind, :]
-			mfunc_uc_h_prime = UC_prime_H_func_ex[DB_ind,
+			mfunc_uc_v_prime = V_func_ex[DB_ind,
 												  E_ind, alpha_ind,
 												  beta_ind, Pi_ind,
 												  :, adc_ind, h_ind,
 												  q_ind, :]
-			#mfunc_uc_hfc_prime = UC_prime_HFC_func_ex[DB_ind,
-			#										  E_ind, alpha_ind,
-			#										  beta_ind, Pi_ind,
-			#										  :, adc_ind, h_ind,
-			#										  q_ind, :]
+
 			mfunc_uc_m_prime = UC_prime_M_func_ex[DB_ind,
 												  E_ind, alpha_ind,
 												  beta_ind, Pi_ind,
@@ -1082,24 +1085,9 @@ def worker_solver_factory(og,
 									beta_ind, Pi_ind,
 									:, adc_ind, h_ind,
 									q_ind]
-			uf_prime_func = UF_prime_func_ex[DB_ind, E_ind,
-											 alpha_ind,
-											 beta_ind, Pi_ind,
-											 :, adc_ind, h_ind,
-											 q_ind]
 
-			# calculate consumption by checking whether
-			# mortgage liability binds at any constraints
-
-			# RHS with min payment
-			min_pay_points = np.array([a_prime,
-									   (1 - amort_rate(t - 2)) * m])
-			ucmprime_m_minp = max(1e-250,beta * eval_linear(X_cont_WAM,
-												 mfunc_uc_m_prime,
-												 min_pay_points, xto.LINEAR))
-			uc_prime_minp = max(1e-250,beta * eval_linear(X_cont_WAM,
-											   mfunc_ucprime,
-											   min_pay_points, xto.LINEAR))
+			# calculate consumption by checking whether non-negative 
+			# mortgage consraint binds 
 
 			# RHS with full payment
 			max_pay_points = np.array([a_prime, 0])
@@ -1110,30 +1098,19 @@ def worker_solver_factory(og,
 											 mfunc_ucprime,
 											 max_pay_points, xto.LINEAR))
 
-			# Step 1: check if constrained by min payment
-			if m == 0:
-				c_t = min(C_max, max(C_min, uc_inv(
-					uc_prime_fp, h, alpha_housing)))
-				m_prime = 0
-				UC_prime_RHS = uc_prime_fp
 
-			#elif uc_prime_minp >= ucmprime_m_minp:
-			#	c_t = min(C_max, max(C_min, uc_inv(
-			#		uc_prime_minp, h, alpha_housing)))
-			#	m_prime = (1 - amort_rate(t - 2)) * m
-			#	UC_prime_RHS = uc_prime_minp
-
-			# Step 2: check if constrainte by full payment
+			# Step 1: check if constrainted by full re-payment of liability
 			elif uc_prime_fp <= ucmprime_m_fp:
 				c_t = min(
 					max(C_min, uc_inv(uc_prime_fp, h, alpha_housing)), C_max)
 				m_prime = 0
 				UC_prime_RHS = uc_prime_fp
 
-			# Step 3: otherwise, eval unconstrained:
+			# Step 2: otherwise, eval unconstrained 
+			# Note we are still constrained by collateral 
 			else:
 				m_prime_adj = interp_as(A, mort_func1D, np.array([a_prime]), extrap= False)[0]
-				m_prime = max(0, min(m_prime_adj, (1 - amort_rate(t - 2)) * m))
+				m_prime = max(0, min(m_prime_adj, h*(1-phi_c)))
 				UC_prime_RHS = max(1e-250,beta * eval_linear(X_cont_WAM,
 												  mfunc_ucprime,
 												  np.array([a_prime, m_prime]), xto.LINEAR))
@@ -1141,81 +1118,20 @@ def worker_solver_factory(og,
 				c_t = min(C_max, max(C_min, uc_inv(
 					UC_prime_RHS, h, alpha_housing)))
 
-			extra_payment = max(0, (1 - amort_rate(t - 2)) * m - m_prime)
-			#min_constrained = extra_payment == 0\
-			#	and (1 - amort_rate(t - 2)) * m <= h * q * (1 - phi_c)
-
-			# Constraint that tells us that mortgage liability is
-			# greater than house value (after adjustment, agent will
-			# have to pay excess liability)
-			ref_max_constrained = int(m_prime > h * q * (1 - phi_c))
+			mort_payment = max(0, m - m_prime)
 			pts_noadj = np.array([a_prime, m_prime])
 			
-			if ref_max_constrained == 1:
-				# calculate the value of lost utility from discrete
-				# jump in payment of mortgage if forced to re-finance
-				# when housing is adjusted (if mort> house val*(1-phi))
-				# after forced refinancing, house val*(1-phi)> mort
-				pts_atrefc = np.array([a_prime, h * q * (1 - phi_c)])
-				prime_diff_val = beta * eval_linear(X_cont_WAM,
-													uf_prime_func,
-													pts_atrefc, xto.LINEAR)\
-					- beta * eval_linear(X_cont_WAM,
-										 uf_prime_func,
-										 pts_noadj, xto.LINEAR)
-
-				# Calculate what consumption would be after forced
-				# refinance
-				uc_prime_refc = beta * eval_linear(X_cont_WAM,
-												   mfunc_ucprime,
-												   pts_atrefc, xto.LINEAR)
-
-				c_t_at_refconst = min(C_min, uc_inv(
-					uc_prime_refc, h, alpha_housing))
-				curr_diff = u(c_t_at_refconst, h, alpha_housing)\
-					- u(c_t, h, alpha_housing)
-
-				val_diff_refc = curr_diff + prime_diff_val
-			else:
-				val_diff_refc = 0
-
-
-			# calculate values of RHS of Euler
-
-			UC_prime_H_RHS = beta * eval_linear(X_cont_WAM,
-												mfunc_uc_h_prime,
-												pts_noadj, xto.LINEAR)
-
-			#UC_prime_HFC_RHS = beta * eval_linear(X_cont_WAM,
-			#									  mfunc_uc_hfc_prime,
-			#									  pts_noadj, xto.LINEAR)
-
-			UC_prime_M_RHS = beta * eval_linear(X_cont_WAM,
-												mfunc_uc_m_prime,
+			# calculate t+ value function 
+			V_RHS = beta * eval_linear(X_cont_WAM,
+												mfunc_uc_v_prime,
 												pts_noadj, xto.LINEAR)
 
 			# Define the endogenous liq assets after
-			# wage and after vol. cont. and after making
-			# min mort. payment
+			# wage and after vol. cont.
 			# note we are NOT dividing through by (1+r)
-			assets_l[int(i-a)] = c_t + a_prime + extra_payment
+			assets_l[int(i-a)] = c_t + a_prime + mort_payment
 			cons_l[int(i-a)] = c_t
-
-			# Calculate the no-adjust multipler
-			# min_const_FOC is marginal benefit from relaxing collat
-			# constraint by adjusting increasing house value
-			#min_const_FOC = min_constrained\
-			#	* (max(uc(c_t, h, alpha_housing) - ucmprime_m_minp, 0))
-
-			ref_const_FOC = -ref_max_constrained * (min(val_diff_refc, 0))
-
-			geta_t = uh(c_t, h, alpha_housing)\
-				+ UC_prime_H_RHS\
-				- uc(c_t, h, alpha_housing) * q
-
-			etas[int(i-a)] = geta_t / (uc(c_t, h, alpha_housing)
-								* q * h * tau_housing
-								 + ref_const_FOC)
+			etas[int(i-a)] = u(c_t, h) + beta * V_RHS
 
 		# Re-shape and interpolate the no adjustment endogenous grids
 		# we want rows to  index a product of states
@@ -1229,7 +1145,7 @@ def worker_solver_factory(og,
 					  UC_prime,
 					  UC_prime_H,
 					  UC_prime_M,
-					  UF,
+					  VF,
 					  points_noadj):
 		"""Function evaluates no adjust polices  for time t
 			on the policy evaluation grid 
@@ -1246,7 +1162,7 @@ def worker_solver_factory(og,
 		UC_prime_H:
 		UC_prime_HFC:
 		UC_prime_M:
-		UF: 
+		VF: 
 		points_noadj
 
 		Returns
@@ -1263,7 +1179,7 @@ def worker_solver_factory(og,
 			a = 0
 			b = int(len(X_all_hat_ind)/3)
 			cons_l_1, etas_1, assets_l_1 = eval_policy_W_noadj(
-				t, mort_func, UC_prime, UC_prime_H, UC_prime_M, UF, a,b)
+				t, mort_func, UC_prime, UC_prime_M, VF, a,b)
 			comm.Send(cons_l_1, dest = 0, tag = 1233)
 			comm.Send(etas_1, dest = 0, tag = 1244)
 			comm.Send(assets_l_1, dest = 0, tag = 1255)
@@ -1272,7 +1188,7 @@ def worker_solver_factory(og,
 			a = int(len(X_all_hat_ind)*2/3)
 			b = int(len(X_all_hat_ind))
 			cons_l_3, etas_3, assets_l_3 = eval_policy_W_noadj(
-				t, mort_func, UC_prime, UC_prime_H, UC_prime_M, UF,a,b )
+				t, mort_func, UC_prime, UC_prime_M, VF,a,b )
 
 			comm.Send(cons_l_3, dest = 0, tag = 1333)
 			comm.Send(etas_3, dest = 0, tag = 1344)
@@ -1282,7 +1198,7 @@ def worker_solver_factory(og,
 			a = int(len(X_all_hat_ind)/3)
 			b = int(len(X_all_hat_ind)*2/3)
 			cons_l_2, etas_2, assets_l_2 = eval_policy_W_noadj(
-				t, mort_func, UC_prime, UC_prime_H, UC_prime_M, UF,a,b)
+				t, mort_func, UC_prime, UC_prime_M, VF,a,b)
 		
 		if 	comm.rank == 0:
 			a = 0
@@ -1332,7 +1248,7 @@ def worker_solver_factory(og,
 				.transpose((0, 1, 2, 3, 8, 4, 9, 10, 5, 6, 7, 11))\
 				.reshape((x_all_ind_len, 4))
 
-			return noadj_vals, C_noadj.astype(np.float32), etas_noadj.astype(np.float32), Aprime_noadj.astype(np.float32)
+			return noadj_vals, C_noadj, etas_noadj, Aprime_noadj
 		else:
 			return None
 
@@ -1341,18 +1257,20 @@ def worker_solver_factory(og,
 					UC_prime,
 					UC_prime_H,
 					UC_prime_M,
+					VF,
 					points_adj):
 		"""Function evaluates polices, then calls on function to create RHS
 		interpoled policies and returns both."""
 
-		C_adj, H_adj, Aprime_adj = eval_policy_W_adj(t,
+		C_adj, H_adj, Aprime_adj,eta_adj = eval_policy_W_adj(t,
 													 mort_func,
 													 UC_prime,
 													 UC_prime_H,
-													 UC_prime_M)
+													 UC_prime_M, VF)
 		adj_vals = gen_RHSeval_pol_adj(reshape_adj_RHS(C_adj),
 									   reshape_adj_RHS(H_adj),
 									   reshape_adj_RHS(Aprime_adj),
+									   reshape_adj_RHS(eta_adj),
 									   points_adj)
 		adj_vals = adj_vals.reshape((1, grid_size_W,
 									 grid_size_alpha,
@@ -1360,9 +1278,9 @@ def worker_solver_factory(og,
 									 grid_size_Q, grid_size_M,
 									 len(V),
 									 grid_size_A, grid_size_DC,
-									 grid_size_H, 5))\
+									 grid_size_H, 6))\
 			.transpose((0, 1, 2, 3, 7, 4, 8, 9, 10, 5, 6, 11))\
-			.reshape((x_all_ind_len, 5))
+			.reshape((x_all_ind_len, 6))
 		return adj_vals, C_adj, H_adj, Aprime_adj
 
 	def gen_RHS_rentponts(UC_prime, points_rent):
@@ -1390,32 +1308,34 @@ def worker_solver_factory(og,
 	def eval_policy_W_adj(t, mort_func,
 						  UC_prime_func,
 						  UC_prime_H_func,
-						  UC_prime_M_func):
-		"""Time t worker policy function evaluation with adjustment.
+						  UC_prime_M_func, VF):
+		"""Time t worker policy function evaluation with adjustment
 
 		Parameters
 		----------
-		t :                 int
-												 age
-		UC_prime_func :     flat 10D array
-												 t+1 expected value of u_1(c,h)
-		UC_prime_H_func:    flat 10D array
-												 t+1 RHS of Euler equation wrt to H_t
-		UC_prime_HFC_func:  flat 10D array
-												 t+1 RHS fixed cost of adj
-		UC_prime_M_func:    flat 10D array
-												 t+1 mortgage choice
+		t : int
+			 age
+		UC_prime_func : flat 10D array
+						 t+1 expected value of u_1(c,h)
+		UC_prime_H_func: flat 10D array
+						  t+1 RHS of Euler equation wrt to H_t
+		UC_prime_M_func: flat 10D array
+						  t+1 mortgage choice
+		VF_func: flat 10D array
+				  t+1 value function
 
 		Returns
 		-------
-		C_adj:              9D array
-												 adjuster consumption policy
-		H_adj:              9D array
-												 adjust housing policy
-		Aprime_adj:         9D array
-												 adjust liquid assett policy
+		C_adj: 9D array
+				adjuster consumption policy
+		H_adj: 9D array
+				adjust housing policy
+		Aprime_adj: 9D array
+					adjust liquid assett policy
+		eta_adj: 9D array
+					adjuster continuation value 
 
-		Expectation of UC_prime_func and UC_prime_eta_func defined on:
+		Expectation of UC_prime_func and VF defined on:
 
 				- time t E, alpha, beta, pi, house price
 				- time t mortgage liability (after t interest)
@@ -1439,14 +1359,15 @@ def worker_solver_factory(og,
 		A_prime = np.zeros(int(len(X_W_bar_hdjex_ind)))
 		wealth_bar = np.zeros(int(len(X_W_bar_hdjex_ind)))
 		C = np.copy(A_prime)
+		eta_adj = np.copy(A_prime)
 
 		UC_prime_func_ex = UC_prime_func.reshape(all_state_shape)
 		UC_prime_H_func_ex = UC_prime_H_func.reshape(all_state_shape)
-		#UC_prime_HFC_func_ex = UC_prime_HFC_func.reshape(all_state_shape)
+		V_func_ex = VF.reshape(all_state_shape)
 		UC_prime_M_func_ex = UC_prime_M_func.reshape(all_state_shape)
 
 		for i in range(len(X_W_bar_hdjex_ind)):
-			#print(i)
+
 			"""For each i, the indices in X_W_bar_hdjex_ind[i] are:
 
 			0 - DB/DC
@@ -1475,8 +1396,8 @@ def worker_solver_factory(og,
 			beta = beta_hat[beta_ind]
 			alpha_housing = alpha_hat[alpha_ind]
 							
-			# get functions for next period U_prime values
-			# as functions of A_prime and M_prime
+			# get functions for next period U_prime and VF values
+			# as functions of A_prime, H_prime and  M_prime
 			UC_prime_func2D = UC_prime_func_ex[DB_ind,
 											   E_ind, alpha_ind,
 											   beta_ind, Pi_ind,
@@ -1489,38 +1410,35 @@ def worker_solver_factory(og,
 												   :, adc_ind, :,
 												   q_ind, :]
 
-			#UC_prime_HFC_func2D = UC_prime_HFC_func_ex[DB_ind,
-			#										   E_ind, alpha_ind,
-			#										   beta_ind, Pi_ind,
-			#										   :, adc_ind, :,
-			#										   q_ind, :]
+			VF_func2D = V_func_ex[DB_ind,
+									E_ind, alpha_ind,
+									beta_ind, Pi_ind,
+									:, adc_ind, :,
+									q_ind, :]
 
 			UC_prime_M_func2D = UC_prime_M_func_ex[DB_ind,
 												   E_ind, alpha_ind,
 												   beta_ind, Pi_ind,
 												   :, adc_ind, :,
 												   q_ind, :]
-			# get function of M_prime
-			# as function of A_prime
+			
+			# get function of M_prime as function of A_prime and H_t
 			mort_func1D = mort_func[DB_ind, E_ind,
 									alpha_ind,
 									beta_ind, Pi_ind,
 									:, adc_ind, :,
 									q_ind]
-			#mort_func1D[mort_func1D == np.nan] = 0
-			# as function of A_prime and H_t
-			mort_func2D = mort_func[DB_ind, E_ind,
-									alpha_ind,
-									beta_ind, Pi_ind,
-									:, adc_ind, :,
-									q_ind]
+
 			# Calc wage (for max mortgage)
 			wage = y(t, E[E_ind])
 
-			# make tuple of args for FOC Euler error functions
+			# Make tuple of args for FOC Euler error functions
 			args_HA_FOC = (a_dc, h, q, m, alpha_housing, beta,
 						   wage, mort_func1D,
-						   UC_prime_func2D, UC_prime_H_func2D, UC_prime_M_func2D, t)
+						   UC_prime_func2D, 
+						   UC_prime_H_func2D,
+						   UC_prime_M_func2D,
+						   t)
 
 			args_eval_c = (A_min, a_dc, h, q, m, alpha_housing, beta,
 						   wage, mort_func1D,
@@ -1568,15 +1486,20 @@ def worker_solver_factory(og,
 				m_prime_adj = eval_linear(X_cont_AH, mort_func1D,
 										np.array([A_prime[i],h]), xto.LINEAR)
 				m_prime = max(0, min(m_prime_adj, max_loan))
-				extra_payment = (1 - amort_rate(t - 2)) * m - m_prime
+				mort_payment = m - m_prime
 
 				# end. cash at hand wealth is defined as:
-				# (1+r)a_t + net wage - minimum mortage payment
+				# (1+r)a_t + net wage 
 				# + P_t(1-delta)H_t-1
 
 				wealth_bar[i] = C[i] + A_prime[i]\
 					+ q * h * (1 + tau_housing)\
-					+ extra_payment
+					+ mort_payment
+				
+				eta_adj[i] = u(C[i], h) +  eval_linear(X_cont_WAM2,\
+														 VF_func2D,\
+														np.array([A_prime[i],h,m_prime]),\
+														xto.LINEAR)
 
 			# if no interior solution with liq asset unconstrainted,
 			# check if interior solution to housing and constrained
@@ -1586,7 +1509,7 @@ def worker_solver_factory(og,
 				C_at_amin = min(C_max, max(brentq(H_FOC, C_min, C_max,
 												  args=args_eval_c, disp=False)[0], C_min))
 
-				m_prime_adj_at_amin1 = eval_linear(X_cont_AH, mort_func1D,
+				m_prime_adj_at_amin1 = eval_linear(X_cont_AH, VF_func2D,
 												 np.array([A_min,h]),xto.LINEAR)
 				m_prime_at_amin = max(0,min(m_prime_adj_at_amin1, max_loan))
 				UC_prime_RHS_amin = beta\
@@ -1605,6 +1528,7 @@ def worker_solver_factory(og,
 						+ A_prime[i]\
 						+ q * h * (1 + tau_housing)\
 						+ extra_payment
+					eta_adj[i] = u(C[i], h)
 				else:
 					pass
 
@@ -1617,13 +1541,13 @@ def worker_solver_factory(og,
 
 		# interpolate C, H and A_prime on endogenous wealth grid
 
-		C_adj, H_adj, Aprime_adj = interp_pol_adj(A_prime, C, wealth_bar)
+		C_adj, H_adj, Aprime_adj, eta_adj = interp_pol_adj(A_prime, C, eta_adj, wealth_bar)
 
-		return C_adj, H_adj, Aprime_adj
+		return C_adj, H_adj, Aprime_adj, eta_adj
 
 	# Functions to generate and condition the RHS of Euler equation
 	@njit
-	def gen_RHSeval_pol_adj(C_adj, H_adj, Aprime_adj, points_adj):
+	def gen_RHSeval_pol_adj(C_adj, H_adj, Aprime_adj, points_adj,Etaprime_adj):
 		"""Evalutes policies for housing adjusters on all points in the full
 		state-space grid."""
 
@@ -1631,7 +1555,7 @@ def worker_solver_factory(og,
 		adj_vals_small1 = np.empty((len(C_adj),
 									int(grid_size_H * len(V)
 										* grid_size_A
-										* grid_size_DC), 5))
+										* grid_size_DC), 6))
 
 		for i in range(len(C_adj)):
 			# Loop through each i \in ADJX: = DBxExAlphaxBetaxPixQxM
@@ -1653,6 +1577,8 @@ def worker_solver_factory(og,
 			adj_vals_small1[i, :, 1] = eval_linear(X_QH_W, H_adj[i],
 												   points_adj[i], xto.LINEAR)
 			adj_vals_small1[i, :, 2] = eval_linear(X_QH_W, Aprime_adj[i],
+												   points_adj[i], xto.LINEAR)
+			adj_vals_small1[i, :, 5] = eval_linear(X_QH_W, Etaprime_adj[i],
 												   points_adj[i], xto.LINEAR)
 
 			# the fourth column of adj_vals_small1 is
@@ -1793,7 +1719,9 @@ def worker_solver_factory(og,
 		# Generate indicator function for non-adjuster (|eta|<=1)
 		noadj_vals[:, 1] = np.where(np.abs(noadj_vals[:, 1]) <= 1, 1, 0)
 
-		etas_ind = noadj_vals[:, 1]
+		etas_noadj = noadj_vals[:, 1]
+		etas_adj = adj_vals[:, 5]
+		etas_ind = np.int(np.where(etas_noadj>etas_adj))
 		# Generate policies for non-renters
 		# eta*no-adjust + (1-eta)*adjust
 		# recall final 5th col of adj_vals is
@@ -1867,6 +1795,7 @@ def worker_solver_factory(og,
 
 	@njit
 	def gen_RHS_lambdas(t, VF,
+						UC_prime_H, 
 						UF_B,
 						points_p):
 		"""Generates RHS values of VF_t+1, Lambda_t+1 and Xi_t for renters and
@@ -1874,7 +1803,7 @@ def worker_solver_factory(og,
 
 		# Generate empty arrays to fill with evaluated values
 		Xi = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
-		#Lambda_B = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
+		Lambda_B = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
 		VF_B = np.empty((len(points_p), len(X_V_func_DP_vals[:, 0])))
 
 		# The list of vol contributions rates will be common across each
@@ -1925,9 +1854,9 @@ def worker_solver_factory(og,
 												VF[i],
 												points_p[i], xto.LINEAR)
 
-			#lam_func_vals = beta_t * eval_linear(X_cont_W_bar,
-			#									 Lambda[i],
-			#									 points_p[i], xto.LINEAR)
+			lam_func_vals = beta_t * eval_linear(X_cont_W_bar,
+												 UC_prime_H[i],
+												 points_p[i], xto.LINEAR)
 
 			# check: should bequest value go here?
 			VF_B[i, :] = UF_B[i, :] + vf_func_vals
@@ -1942,7 +1871,7 @@ def worker_solver_factory(og,
 			#print(pi_ind)
 			#print(pi)
 			vol_cost = adj_v(t, X_V_func_DP_vals[:, 1]) * v_ind
-			#Lambda_B[i, :] = lam_func_vals
+			Lambda_B[i, :] = lam_func_vals
 			Xi[i, :] = VF_B[i, :]\
 				- vol_cost\
 				- adj_pi(t, X_V_func_DP_vals[:, 2],
@@ -1950,10 +1879,11 @@ def worker_solver_factory(og,
 
 			#print(vol_cost)
 
-		return Xi, VF_B
+		return Xi, VF_B, Lambda_B
 
 	def gen_RHS_UC_func(comm, t,
 						VF,
+						UC_prime_H, 
 						A_prime,
 						noadj_vals,
 						adj_vals,
@@ -2070,6 +2000,10 @@ def worker_solver_factory(og,
 			.transpose((0, 1, 2, 3, 4, 8, 5, 6, 7, 9))\
 			.reshape((v_func_shape))
 
+		UC_prime_H = UC_prime_H.reshape(all_state_shape)\
+			.transpose((0, 1, 2, 3, 4, 8, 5, 6, 7, 9))\
+			.reshape((v_func_shape))
+
 		#Lambda = Lambda.reshape(all_state_shape)\
 		#	.transpose((0, 1, 2, 3, 4, 8, 5, 6, 7, 9))\
 		#	.reshape((v_func_shape))
@@ -2078,12 +2012,13 @@ def worker_solver_factory(og,
 		# interpolate values of value function and
 		# Lambda function back to period t
 		if comm.rank == 0:
-			Xi_rent, VF_B_rent = gen_RHS_lambdas(t, VF,
+			Xi_rent, VF_B_rent, Lambda_B_rent = gen_RHS_lambdas(t, VF,
+																	UC_prime_H,
 																reshape_RHS_UFB(
 																	u_prime_rent),
 																rent_points_p)
 			Xi_rent = reshape_RHS_Vfunc_rev(Xi_rent)
-			#Lambda_B_rent = reshape_RHS_Vfunc_rev(Lambda_B_rent)
+			Lambda_B_rent = reshape_RHS_Vfunc_rev(Lambda_B_rent)
 			VF_B_rent = reshape_RHS_Vfunc_rev(VF_B_rent)
 
 		if comm.rank == 1:
@@ -2106,25 +2041,26 @@ def worker_solver_factory(og,
 
 			comm.Recv(no_rent_points_p, source=0, tag=222)
 			comm.Recv(u_prime_norent, source=0, tag=221)
-			Xi_norent, VF_B_norent = gen_RHS_lambdas(t, VF,
+			Xi_norent, VF_B_norent, Lambda_B_norent = gen_RHS_lambdas(t, VF,
+																		UC_prime_H, 
 																	  reshape_RHS_UFB(
 																		  u_prime_norent),
 																	  no_rent_points_p)
 			Xi_norent = reshape_RHS_Vfunc_rev(Xi_norent)
-			#Lambda_B_norent = reshape_RHS_Vfunc_rev(Lambda_B_norent)
+			Lambda_B_norent = reshape_RHS_Vfunc_rev(Lambda_B_norent)
 			VF_B_norent = reshape_RHS_Vfunc_rev(VF_B_norent)
 			comm.Send(Xi_norent, dest=0, tag = 999)
-			#comm.Send(Lambda_B_norent, dest=0, tag = 997)
+			comm.Send(Lambda_B_norent, dest=0, tag = 997)
 			comm.Send(VF_B_norent, dest=0, tag = 996)
 		
 		if comm.rank == 0:
 
 			Xi_norent = np.empty(np.shape(Xi_rent))
-			#Lambda_B_norent = np.empty(np.shape(Lambda_B_rent))
+			Lambda_B_norent = np.empty(np.shape(Lambda_B_rent))
 			VF_B_norent = np.empty(np.shape(VF_B_rent))
 
 			comm.Recv(Xi_norent, source=1, tag=999)
-			#comm.Recv(Lambda_B_norent, source=1, tag=997)
+			comm.Recv(Lambda_B_norent, source=1, tag=997)
 			comm.Recv(VF_B_norent, source=1, tag=996)
 
 			UF_B_norent = u_prime_norent
@@ -2157,15 +2093,16 @@ def worker_solver_factory(og,
 			UC_prime_B = (1 + r) * (s[int(t - 1)] * uc_prime + (1 - s[int(t - 1)])
 									* b_prime(A_prime))
 			# wrt to H_t-1
-			UC_prime_H_B = Q[X_all_ind[:, 9]]\
-				* (1 - delta_housing - tau_housing * renter_ind)\
+			UC_prime_H_B_rent = renter_ind*Q[X_all_ind[:, 9]]\
+				* (1 - delta_housing - tau_housing )\
 				* (s[int(t - 1)] * uc_prime
 				   + (1 - s[int(t - 1)]) * b_prime(A_prime))
 
+
+			UC_prime_H_B = (renter_ind + (1-etas_ind)*UC_prime_H_B_rent) + etas_ind*beta*(1-delta)8Lambda_B_norent
+
 			# the fixed cost paif if H_t-1 is adjusted
-			#UC_prime_HFC_B = Q[X_all_ind[:, 9]] * (1 - delta_housing) * s[int(t - 1)] * uc_prime\
-			#	* tau_housing * h_prime_norent_vals\
-			#	* etas_ind * (1 - renter_ind)
+
 			# wrt to mortgage m_t
 			UC_prime_M_B = s[int(t - 1)] * uc_prime * extra_pay\
 				+ (1 - s[int(t - 1)]) * b_prime(A_prime)
@@ -2173,8 +2110,7 @@ def worker_solver_factory(og,
 			# Return RHS value function, period utility
 			# function and Lambda function values state by state
 			# Xi function is the period utility + Lambda - adjustment cost
-			#Lambda_B = renter_ind * Lambda_B_rent \
-			#	+ (1 - renter_ind) * Lambda_B_norent
+
 			VF_B = renter_ind * VF_B_rent\
 				+ (1 - renter_ind) * VF_B_norent
 			Xi = renter_ind * Xi_rent\
@@ -2193,7 +2129,7 @@ def worker_solver_factory(og,
 	def UC_cond_DC(UC_prime_B,
 				   UC_prime_H_B,
 				   UC_prime_M_B, VF_B,
-				   Xi, UF_B):
+				   Xi):
 		"""Indicies of inputs are ordered by:
 
 		0 - DB/DC
@@ -2210,12 +2146,11 @@ def worker_solver_factory(og,
 		# Reshape to condition out pi
 
 		UC_prime_copi, UC_prime_H_copi,\
-			UC_prime_M_copi, VF_B_copi, UF_B_copi, Xi_copi,\
+			UC_prime_M_copi, VF_B_copi, Xi_copi,\
 			state_index_copi = \
 			reshape_out_pi(UC_prime_B),\
 			reshape_out_pi(UC_prime_H_B),\
 			reshape_out_pi(UC_prime_M_B), reshape_out_pi(VF_B),\
-			reshape_out_pi(UF_B),\
 			reshape_out_pi(Xi),\
 			np.float64(reshape_out_pi(X_all_ind[:, 0]))
 
@@ -2228,32 +2163,22 @@ def worker_solver_factory(og,
 						 - np.max(Xi_copi / scaling_pi[:, np.newaxis],
 								  axis=1)[:, np.newaxis])
 
-		#print(Xi_copi_temp[100])
-		#print(Xi_copi[100])
-		#print(Xi_copi[2000:3000])
-		#print(scaling_pi[2000:3000])
-
 		prob_pi = np.exp(Xi_copi_temp)\
 			/ np.sum(np.exp(Xi_copi_temp), axis=1)[:, np.newaxis]
 
 		prob_pi[np.where(np.isnan(prob_pi))] = .001
-
-		#print(prob_pi)
-
 		UC_prime_cpi = einsum_row(prob_pi, UC_prime_copi)
 		UC_prime_H_cpi = einsum_row(prob_pi, UC_prime_H_copi)
 		UC_prime_M_cpi = einsum_row(prob_pi, UC_prime_M_copi)
 		VF_B_cpi = einsum_row(prob_pi, VF_B_copi)
-		UF_B_cpi = einsum_row(prob_pi, UF_B_copi)
 		Xi_cpi = einsum_row(prob_pi, Xi_copi)
 		# Reshape to condition out V
 		UC_prime_cov, UC_prime_H_cov,\
-			UC_prime_M_cov, VF_B_cov, UF_B_cov, Xi_cov,\
+			UC_prime_M_cov, VF_B_cov, Xi_cov,\
 			DB_index_V = reshape_out_V(UC_prime_cpi),\
 			reshape_out_V(UC_prime_H_cpi),\
 			reshape_out_V(UC_prime_M_cpi),\
 			reshape_out_V(VF_B_cpi),\
-			reshape_out_V(UF_B_cpi),\
 			reshape_out_V(Xi_cpi),\
 			reshape_out_V(DB_index_new)
 
@@ -2261,14 +2186,11 @@ def worker_solver_factory(og,
 						   np.array((1 -
 									 DB_index_V[:, 0])), sigma_DC_V *
 						   np.array((DB_index_V[:, 0]))).astype(np.float64) 
-		#print(Xi_cov)
 		Xi_cov_temp = np.add(Xi_cov / scaling_v[:, np.newaxis],
 						- np.max(Xi_cov / scaling_v[:, np.newaxis],
 								 axis=1)[:, np.newaxis])
 		prob_v = np.exp(Xi_cov_temp)\
 			/ np.sum(np.exp(Xi_cov_temp), axis=1)[:, np.newaxis]
-
-		#print(prob_v)
 
 		prob_v[np.where(np.isnan(prob_v))] = .001
 
@@ -2276,15 +2198,14 @@ def worker_solver_factory(og,
 		UC_prime_H_cv = einsum_row(prob_v, UC_prime_H_cov)
 		UC_prime_M_cv = einsum_row(prob_v, UC_prime_M_cov)
 		VF_B_cv = einsum_row(prob_v, VF_B_cov)
-		UF_B_cv = einsum_row(prob_v, UF_B_cov)
 		Xi_cv = einsum_row(prob_v, Xi_cov)
 
-		UC_prime_DCC, UC_prime_H_DCC, UC_prime_M_DCC, VF_DCC, UF_DCC\
+		UC_prime_DCC, UC_prime_H_DCC, UC_prime_M_DCC, VF_DCC\
 			= reshape_X_bar(UC_prime_cv),\
 			reshape_X_bar(UC_prime_H_cv),\
 			reshape_X_bar(UC_prime_M_cv),\
-			reshape_X_bar(VF_B_cv),\
-			reshape_X_bar(UF_B_cv)
+			reshape_X_bar(VF_B_cv)
+
 		Xi_cov_out = Xi_cov.reshape(int(len(DB)), grid_size_W,
 									grid_size_alpha,
 									grid_size_beta,
@@ -2307,10 +2228,10 @@ def worker_solver_factory(og,
 		del Xi_copi_temp
 		del Xi_cov_temp
 		gc.collect()
-		return UC_prime_DCC, UC_prime_H_DCC, UC_prime_M_DCC, VF_DCC, prob_v.reshape(prob_v_shape), prob_pi.reshape(prob_pi_shape), UF_DCC, Xi
+		return UC_prime_DCC, UC_prime_H_DCC, UC_prime_M_DCC, VF_DCC, prob_v.reshape(prob_v_shape), prob_pi.reshape(prob_pi_shape), Xi
 
 	@njit
-	def UC_cond_all(t, UC_prime_DCC, UC_prime_H_DCC, UC_prime_M_DCC, VF_DCC, UF_DCC):
+	def UC_cond_all(t, UC_prime_DCC, UC_prime_H_DCC, UC_prime_M_DCC, VF_DCC):
 		"""Generate RHS t+1 Euler equation conditioned on:
 
 				- housing stock taken into time t+1 
@@ -2352,7 +2273,6 @@ def worker_solver_factory(og,
 		UC_prime_H = np.empty(len(X_all_hat_ind))
 		UC_prime_M = np.empty(len(X_all_hat_ind))
 		VF = np.empty(len(X_all_hat_ind))
-		UF = np.empty(len(X_all_hat_ind))
 
 		for i in range(len(X_all_hat_ind)):
 
@@ -2396,7 +2316,7 @@ def worker_solver_factory(og,
 
 			# gen values of t+1 unconditioned on t expectation of the iid shocks
 			# for DC, Mortgage and house price
-			U1, U2, U3, V, U\
+			U1, U2, U3, V\
 				= eval_linear(X_DCQ_W,
 							  UC_prime_DCC[DB_ind,
 										   E_ind_p,
@@ -2423,17 +2343,12 @@ def worker_solver_factory(og,
 							VF_DCC[DB_ind, E_ind_p,
 								   alpha_ind_p, beta_ind,
 								   a_ind, :, h_ind, :, :],
-							point, xto.LINEAR),\
-				eval_linear(X_DCQ_W,
-							UF_DCC[DB_ind, E_ind_p,
-								   alpha_ind_p, beta_ind,
-								   a_ind, :, h_ind, :, :],
 							point, xto.LINEAR)
 
 			UC_prime[i], UC_prime_H[i],\
-				UC_prime_M[i], VF[i], UF[i] \
+				UC_prime_M[i], VF[i]
 				= d0(U1, Q_DC_P), d0(U2, Q_DC_P),\
-				d0(U3, Q_DC_P), d0(V, Q_DC_P), d0(U, Q_DC_P)
+				d0(U3, Q_DC_P), d0(V, Q_DC_P)
 
 		UC_prime[np.where(UC_prime<= 0)] = 1E-250
 		UC_prime_H[np.where(UC_prime_H<= 0)] = 1E-250
@@ -2444,7 +2359,7 @@ def worker_solver_factory(og,
 		UC_prime_H[np.where(np.isnan(UC_prime_H))]= 1E-250
 		UC_prime_M[np.where(np.isnan(UC_prime_M))]= 1E-250
 
-		return UC_prime, UC_prime_H, UC_prime_M, VF, UF
+		return UC_prime, UC_prime_H, UC_prime_M, VF
 
 	
 	def solve_LC_model(comm,\
@@ -2518,9 +2433,8 @@ def worker_solver_factory(og,
 								comm,\
 								mort_func,\
 								UC_prime,\
-								UC_prime_H,\
 								UC_prime_M,\
-								UF,\
+								VF,\
 								points_noadj_vec)
 				if comm.rank == 0:
 					noadj_vals,C_noadj, etas_noadj, Aprime_noadj = noadjpolsoutparr
@@ -2571,6 +2485,7 @@ def worker_solver_factory(og,
 			if comm.rank == 0 or comm.rank == 1:
 				B_funcs = gen_RHS_UC_func(comm, t,
 						  VF,
+						  UC_prime_H,
 						  A_prime, 
 						  noadj_vals,
 						  adj_vals,
@@ -2587,10 +2502,10 @@ def worker_solver_factory(og,
 				start = time.time()
 				UC_prime_DCC, UC_prime_H_DCC,\
 					UC_prime_M_DCC, VF_DCC,\
-					prob_v, prob_pi, UF_DCC,Xi_copi_temp = UC_cond_DC(UC_prime_B,
+					prob_v, prob_pi,Xi_copi_temp = UC_cond_DC(UC_prime_B,
 														 UC_prime_H_B,
 														 UC_prime_M_B, VF_B,\
-														 Xi, UF_B)
+														 Xi)
 				if verbose == True:
 					print("Solved UC_cond_DC of age {} in {} seconds".
 						  format(Age, time.time() - start))
@@ -2598,11 +2513,11 @@ def worker_solver_factory(og,
 				# Step 6: Condition out DC return, house price and mortgage 
 				# (iid) shocks
 				start = time.time()
-				UC_prime, UC_prime_H, UC_prime_M, VF, UF\
+				UC_prime, UC_prime_H, UC_prime_M, VF\
 					= UC_cond_all(t,
 								  UC_prime_DCC,
 								  UC_prime_H_DCC,
-								  UC_prime_M_DCC, VF_DCC, UF_DCC)
+								  UC_prime_M_DCC, VF_DCC)
 				if verbose == True:
 					print("Solved UC_cond_all of age {} in {} seconds".
 						  format(Age, time.time() - start))
