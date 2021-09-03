@@ -79,19 +79,23 @@ def lsmodel_function_factory(parameters,
 
         return max(1e-200,((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1))
 
-    #@njit
+    @njit 
+    def p_power(x,y):
+        return np.power(x, y)
+
+    @njit
     def uc_vec(c,s, alpha):
-        U_cvec = ((1-alpha)*(np.power(c,(rho-1))))\
-                *np.power(((1-alpha)*np.power(c,rho) + alpha*np.power(s,rho)),(((1-gamma)/rho)-1))
+        U_cvec = ((1-alpha)*(p_power(c,(rho-1))))\
+                *p_power(((1-alpha)*p_power(c,rho) + alpha*p_power(s,rho)),(((1-gamma)/rho)-1))
 
         return U_cvec
 
-    #@njit
+    @njit
     def u_vec(c,s, alpha):
         c = c*1E5
         s = s*1E5
 
-        return  (np.power(((1-alpha)*np.power(c,rho) + alpha*np.power(s,rho)),((1-gamma)/rho)) - 1)/(1-gamma) 
+        return  (p_power(((1-alpha)*p_power(c,rho) + alpha*p_power(s,rho)),((1-gamma)/rho)) - 1)/(1-gamma) 
     
     @njit(error_model="numpy") 
     def uh(c,s, alpha):
@@ -218,6 +222,6 @@ def lsmodel_function_factory(parameters,
     @njit(error_model="numpy")
     def ch_ser(h, alpha, P_r):
         """Housing services as a functiin of consumption"""
-        return  h*np.power((alpha/(P_r*(1-alpha))),(1/(rho-1)))
+        return  h*p_power((alpha/(P_r*(1-alpha))),(1/(rho-1)))
 
     return u, uc, uh, b, b_prime, y,yvec, DB_benefit, adj_p, adj_v, adj_pi, uc_inv, uh_inv, amort_rate, u_vec, uc_vec,housing_ser, ch_ser, ucnz, ces_c1

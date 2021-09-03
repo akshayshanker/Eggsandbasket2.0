@@ -449,6 +449,7 @@ def gen_reshape_funcs(og):
     
         return nadj_pols1
 
+    @njit
     def reshape_vfunc_points(a_prime_norent_vals, adcprime, h_prime_norent_vals, m_prime):
 
         # points are in shape: 
@@ -460,7 +461,7 @@ def gen_reshape_funcs(og):
         points = np.column_stack(
             (a_prime_norent_vals, adcprime, h_prime_norent_vals, m_prime))
 
-        points = points.reshape((1,grid_size_W,\
+        points = np.copy(points).reshape((1,grid_size_W,\
                                     grid_size_alpha,\
                                     grid_size_beta,\
                                     len(Pi),\
@@ -471,8 +472,8 @@ def gen_reshape_funcs(og):
                                     grid_size_Q,\
                                     grid_size_M,4))
 
-        points = points.transpose((0,1,2,3,4,9,5,6,7,8,10,11))
-        points = points.reshape((int(1*grid_size_W*grid_size_alpha*grid_size_beta*len(Pi)*grid_size_Q),\
+        points = np.copy(points).transpose((0,1,2,3,4,9,5,6,7,8,10,11))
+        points = np.copy(points).reshape((int(1*grid_size_W*grid_size_alpha*grid_size_beta*len(Pi)*grid_size_Q),\
                                         int(len(V)*grid_size_A*grid_size_DC*grid_size_H*grid_size_M),4))
 
 

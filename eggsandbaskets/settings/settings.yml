@@ -417,11 +417,11 @@ male:
     f_ASF: 1.0
     f_LSF: 0.23
     gamma: 4
-    grid_size_A: 20.0
+    grid_size_A: 15.0
     grid_size_C: 15.0
     grid_size_DC: 9.0
     grid_size_DCR: 2.0
-    grid_size_H: 20.0
+    grid_size_H: 15.0
     grid_size_HS: 20.0
     grid_size_M: 9.0
     grid_size_Q: 6.0

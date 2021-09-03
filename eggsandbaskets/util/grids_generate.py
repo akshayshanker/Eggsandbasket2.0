@@ -292,16 +292,13 @@ def generate_points(og, path, scratch = True):
 
             """ 
             
-            amort_rate_vec      = np.full(len(X_all_ind[:,4]),\
-                                        amort_rate(int(j+ tzero-2)) )
-
-            wage                = wage_vector[j]
+            wage = wage_vector[j]
 
             # total liquid wealth (cash in hand) for non-adjuster
             # and adjuster 
             points_noadj_vec[j,:,0]         = A[X_all_ind[:,6]]*(1+r)\
                                                 + contrat*wage\
-                                                - amort_rate_vec*m
+
             points_noadj_vec[j,:,0][points_noadj_vec[j,:,0]<=0] = A_min
 
             points_adj_vec[j,:,0]           = points_noadj_vec[j,:,0]\
@@ -309,29 +306,29 @@ def generate_points(og, path, scratch = True):
             points_adj_vec[j,:,0][points_adj_vec[j,:,0]<=0] = A_min
             # next period DC assets (before returns)
             # (recall domain of policy functions from def of eval_policy_W)
-            points_noadj_vec[j,:,1]             = A_DC[X_all_ind[:,7]]\
+            points_noadj_vec[j,:,1] = A_DC[X_all_ind[:,7]]\
                                                     + v*wage\
                                                     + (v_S +v_E)*wage\
                                                         *X_all_ind[:,0]
-            points_adj_vec[j,:,1]               = A_DC[X_all_ind[:,7]]\
+            points_adj_vec[j,:,1]= A_DC[X_all_ind[:,7]]\
                                                     + v*wage\
                                                     + (v_S +v_E)*wage\
                                                         *X_all_ind[:,0]
             # renter cash at hand (after mortgage deduction)
-            points_rent_vec[j,:,0]              = points_noadj_vec[j,:,0]\
+            points_rent_vec[j,:,0]= points_noadj_vec[j,:,0]\
                                                      + q*\
                                                         (h-h*tau_housing_vec)\
                                                          - m                # should mortgage go here?
             points_rent_vec[j,:,0][points_rent_vec[j,:,0]<=0] = A_min
 
-            points_rent_vec[j,:,1]              = A_DC[X_all_ind[:,7]]\
+            points_rent_vec[j,:,1]  = A_DC[X_all_ind[:,7]]\
                                                     + v*wage\
                                                     + (v_Sv +v_Ev)\
                                                         *wage*X_all_ind[:,0]
 
-            A_prime[j]                          =  points_adj_vec[j,:,0]\
+            A_prime[j]=  points_adj_vec[j,:,0]\
                                                      - m
-            A_prime[j][A_prime[j]<=0]           = 1e-200 
+            A_prime[j][A_prime[j]<=0] = 1e-200 
 
         # reshape the adjustment points to wide
         # recall the points adj_vec are ordered accordint to
