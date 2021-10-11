@@ -3,69 +3,33 @@ from tabulate import tabulate
 import numpy as np
 import csv
 import os
+import sys
 
 
-mod_name = 'final_female_v3'
+mod_name  = sys.argv[1]
 TSN = 500
 d = 3
-path = "/scratch/pv33/ls_model_temp/{}".format(mod_name)
+path = "/scratch/pv33/ls_model_temp2/{}".format(mod_name)
 
 os.makedirs(path, exist_ok=True) 
 
 t = 0
-pickle.dump(t, open("/scratch/pv33/ls_model_temp/{}/t.smms".format(mod_name),"wb")) 
-sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms".format('final_female_v1'),"rb")) 
-pickle.dump(sampmom,open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms"\
-					.format(mod_name),"wb"))
+pickle.dump(t, open(path + "/t.smms","wb")) 
+#sampmom = pickle.load(open("/scratch/pv33/ls_model_temp2/{}/latest_sampmom.smms".format('final_female_v1'),"rb")) 
+sampmom = [0,0]
+pickle.dump(sampmom,open(path + "/latest_sampmom.smms","wb"))
 
 
 S_star,gamma_XEM	= np.full(d,0), np.full(d,0)
-sampmom = [0,0]
+
 
 U = np.random.rand(6,100,TSN,100)   
 
-pickle.dump(U,open("/scratch/pv33/ls_model_temp/{}/seed_U.smms"\
-			.format(mod_name),"wb"))
+pickle.dump(U,open(path + "/seed_U.smms","wb"))
 
-pickle.dump(gamma_XEM,open("/scratch/pv33/ls_model_temp/{}/gamma_XEM.smms"\
-					.format(mod_name),"wb"))
+pickle.dump(gamma_XEM,open(path + "/gamma_XEM.smms","wb"))
 
-pickle.dump(S_star,open("/scratch/pv33/ls_model_temp/{}/S_star.smms"\
-					.format(mod_name),"wb"))
+pickle.dump(S_star,open(path + "/S_star.smms","wb"))
 
-pickle.dump(sampmom,open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms"\
-					.format(mod_name),"wb"))
+pickle.dump(sampmom,open(path + "/latest_sampmom.smms","wb"))
 
-
-
-
-mod_name = 'final_male_v3'
-TSN = 500
-d = 3
-path = "/scratch/pv33/ls_model_temp/{}".format(mod_name)
-
-os.makedirs(path, exist_ok=True) 
-
-t = 0
-pickle.dump(t, open("/scratch/pv33/ls_model_temp/{}/t.smms".format(mod_name),"wb")) 
-sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms".format('final_male_v2'),"rb")) 
-pickle.dump(sampmom,open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms"\
-					.format(mod_name),"wb"))
-
-
-S_star,gamma_XEM	= np.full(d,0), np.full(d,0)
-sampmom = [0,0]
-
-U = np.random.rand(6,100,TSN,100)   
-
-pickle.dump(U,open("/scratch/pv33/ls_model_temp/{}/seed_U.smms"\
-			.format(mod_name),"wb"))
-
-pickle.dump(gamma_XEM,open("/scratch/pv33/ls_model_temp/{}/gamma_XEM.smms"\
-					.format(mod_name),"wb"))
-
-pickle.dump(S_star,open("/scratch/pv33/ls_model_temp/{}/S_star.smms"\
-					.format(mod_name),"wb"))
-
-pickle.dump(sampmom,open("/scratch/pv33/ls_model_temp/{}/latest_sampmom.smms"\
-					.format(mod_name),"wb"))

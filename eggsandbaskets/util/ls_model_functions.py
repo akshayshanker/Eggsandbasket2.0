@@ -60,26 +60,26 @@ def lsmodel_function_factory(parameters,
     nu_r_4          =        parameters['nu_r_4']
     psi_adj         =        parameters['psi']
 
-    @njit(error_model="numpy")
+    @njit
     def u(c,s,alpha):
         c = c
         s = s
         U = (((1-alpha)*(c**rho) + alpha*(s**rho))**((1-gamma)/rho) - 1)/(1-gamma) 
         return U #Verified
 
-    @njit(error_model="numpy") 
+    @njit
     def uc(c,s, alpha):
         "Derivative of utility function wrt to consumption"
 
         return ((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1)
 
-    @njit(error_model="numpy") 
+    @njit
     def ucnz(c,s, alpha):
         "Derivative of utility function wrt to consumption"
 
         return max(1e-200,((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1))
 
-    @njit 
+    @njit
     def p_power(x,y):
         return np.power(x, y)
 
@@ -107,7 +107,7 @@ def lsmodel_function_factory(parameters,
         U_c1 = (((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1)) - uc
         return U_c1  #Semi-Verified
 
-    @njit(error_model="numpy") 
+    @njit
     def uc_inv(uc, h, alpha):
         "Inverse of MUC holding current period housing fixed"
 
@@ -116,7 +116,7 @@ def lsmodel_function_factory(parameters,
         return max(1e-100,((uc/(1-alpha))**(exp_uc)))*max(1e-100,(h**exp_h))
 
 
-    @njit(error_model="numpy") 
+    @njit
     def uh_inv(uc, h, alpha):
         "Inverse of MUH holding current period housing fixed"
 
@@ -189,23 +189,21 @@ def lsmodel_function_factory(parameters,
     def adj_p(t_zero):
         """Gives adjustment cost at tzero for plan switching
         """
-        return min(1e300,(np.exp(psi_adj) + np.exp(-500*nu_p_0 + nu_p_1*t_zero + nu_p_2*np.power(t_zero,2))))
+        return min(1e300,(np.exp(psi_adj) * np.exp(-500*nu_p_0 + nu_p_1*t_zero + nu_p_2*np.power(t_zero,2))))
 
     @njit
     def adj_v(t, a):
         """Gives adjustment cost at tzero for voluntary cont switching
         """
         var_1   = np.log(1000*a)
-        var_1[np.where(var_1<0)]= 0
-        cost = np.exp(psi_adj) + np.exp(nu_v_0 + nu_v_2*np.power((t - nu_v_1),2) + nu_v_3*var_1)
+        cost = np.exp(psi_adj) * np.exp(nu_v_0 + nu_v_2*np.power((t - nu_v_1),2) + nu_v_3*var_1)
         cost[cost>=1e300] = 1e300
         return cost
 
     @njit
     def adj_pi(t, a_dc, adj_p):
         var_1 = np.log(1000*a_dc)
-        var_1[np.where(var_1<0)]= 0
-        cost = np.exp(psi_adj)+ np.exp(nu_r_0 + nu_r_1*t + nu_r_2*np.power(t,2) + nu_r_3*var_1 + nu_r_4*adj_p)
+        cost = np.exp(psi_adj) * np.exp(nu_r_0 + nu_r_1*t + nu_r_2*np.power(t,2) + nu_r_3*var_1 + nu_r_4*adj_p)
         cost[cost>=1e300] = 1e300
         return cost 
 
@@ -219,9 +217,9 @@ def lsmodel_function_factory(parameters,
         return c*np.power((alpha/(P_r*(1-alpha))),(1/(1-rho)))
         
 
-    @njit(error_model="numpy")
+    @njit
     def ch_ser(h, alpha, P_r):
-        """Housing services as a functiin of consumption"""
+        """Consumption as a functiin of housing services"""
         return  h*p_power((alpha/(P_r*(1-alpha))),(1/(rho-1)))
 
     return u, uc, uh, b, b_prime, y,yvec, DB_benefit, adj_p, adj_v, adj_pi, uc_inv, uh_inv, amort_rate, u_vec, uc_vec,housing_ser, ch_ser, ucnz, ces_c1
