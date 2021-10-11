@@ -12,17 +12,16 @@ module load openmpi/4.0.5
 
  
 mpiexec -n 480 python3 -m mpi4py smm.py
+
 """
 
 # Import packages
+warnings.filterwarnings('ignore')
 import yaml
 import gc
 import numpy as np
 import time
 import warnings
-warnings.filterwarnings('ignore')
-from collections import defaultdict
-from numpy import genfromtxt
 import csv
 import time
 import dill as pickle 
@@ -32,7 +31,6 @@ import pandas as pd
 from pathlib import Path
 import os
 from sklearn.linear_model import LinearRegression
-
 import shutil
 
 # Housing model modules
@@ -40,8 +38,6 @@ import lifecycle_model
 from solve_policies.worker_solver import generate_worker_pols
 from generate_timeseries.tseries_generator import gen_panel_ts,\
 					 gen_moments, sortmoments, genprofiles_operator
-
-
 
 
 def gen_communicators(big_world,
@@ -92,7 +88,8 @@ def gen_communicators(big_world,
 	# Generate cross- layer 1 communicator from node world
 	# Each rank in this communicator belongs to a distinct layer 1 communicator 
 
-	cross_layer1_world = node_world.Split(int(layer_1_rank),node_world.Get_rank())
+	cross_layer1_world = node_world\
+												.Split(int(layer_1_rank),node_world.Get_rank())
 
 	return layer_1_comm, layer_2_comm, layer_ts_comm, node_world,\
 			cross_node_world, cross_layer1_world
@@ -176,8 +173,10 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 			#p.start()
 			#p.join() 
 			gen_panel_ts(gender,og,U, TSN,job_path)
-			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
-			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
+			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'\
+											.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
+			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'\
+											.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
 			#del p
 			gc.collect()
 
@@ -185,6 +184,7 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 		pass 
 
 	node_world.Barrier()
+
 	# Process time-series only one at a time on each node
 	if cross_layer1_world.rank == 1:
 		if layer_1_comm.rank == 0:
@@ -194,27 +194,20 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 			#p.start()
 			#p.join() 
 			gen_panel_ts(gender,og,U, TSN,job_path)
-			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0'))
-			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
+			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'\
+												.format(og.mod_name +'/'+ og.ID + '_acc_0'))
+			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'\
+												.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
 			#del p
 			gc.collect()
 	else:
 		pass 
 
-	# Generate time series on each Layer 1 master 
 	if layer_1_comm.rank == 0: 
 
 		# We  use the LifeCycle model instance on layer 1 master
 		# to generate the TS since it contains the parameter ID (og.ID)
-		#Process = pathos.helpers.mp.Process
-		#ID = og.ID
 
-		 
-		#if cross_layer1_world == 0:
-		#	TSALL_10_df, TSALL_14_df = gen_panel_ts(gender,og,U, TSN, job_path)
-		#else:
-		#	pass 
-		# Generate and sort moments
 		moments_sim_array, moments_data_array \
 		= gen_format_moments(TSALL_10_df, TSALL_14_df, moments_data, gender)
 
@@ -222,8 +215,10 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 		del TSALL_14_df 
 		gc.collect()
 
-		moments_data_nonan = moments_data_array[np.where(~np.isnan(moments_data_array))]
-		moments_sim_nonan = moments_sim_array[np.where(~np.isnan(moments_data_array))]
+		moments_data_nonan \
+					= moments_data_array[np.where(~np.isnan(moments_data_array))]
+		moments_sim_nonan \
+					= moments_sim_array[np.where(~np.isnan(moments_data_array))]
 		demon_mom = np.abs(moments_data_nonan)
 		#demon_mom[np.where(demon_mom<.05)] = .05
 		deviation_r = np.abs((moments_sim_nonan - moments_data_nonan)/demon_mom)
@@ -332,10 +327,14 @@ def iter_SMM(eggbasket_config,
 	errors_ind = SMM_objective()
 
 	if layer_1_comm.rank == 0:
-		Path(scr_path + "/" + model_name + "/errs/").mkdir(parents=True, exist_ok=True)
-		Path(scr_path + "/" + model_name + "/params/").mkdir(parents=True, exist_ok=True)
-		pickle.dump(errors_ind, open(scr_path + "/" + model_name + "/errs/{}_errors.pkl".format(LS_models.param_id), "wb"))
-		pickle.dump(parameters, open(scr_path + "/" + model_name + "/params/{}_params.pkl".format(LS_models.param_id), "wb"))
+		Path(scr_path + "/" + model_name + "/errs/")\
+					.mkdir(parents=True, exist_ok=True)
+		Path(scr_path + "/" + model_name + "/params/")\
+					.mkdir(parents=True, exist_ok=True)
+		pickle.dump(errors_ind, open(scr_path + "/" + model_name\
+					 + "/errs/{}_errors.pkl".format(LS_models.param_id), "wb"))
+		pickle.dump(parameters, open(scr_path + "/" + model_name\
+					 + "/params/{}_params.pkl".format(LS_models.param_id), "wb"))
 
 	# Gather parameters and corresponding errors from all ranks
 	# Only layer 1 rank 0 values are not None
@@ -351,18 +350,20 @@ def iter_SMM(eggbasket_config,
 
 	if node_world.rank == 0:
 
-		dir_err = os.listdir(scr_path +"/" + model_name + "/errs/")
+		dir_err = os.listdir(scr_path + "/" + model_name + "/errs/")
 		dir_params = os.listdir(scr_path + "/" + model_name + "/params/")
 		indexed_errors = []
 		parameter_list = []
 		time.sleep(5)
 
 		for file in dir_err:
-			errors = pickle.load(open(scr_path +"/" + model_name + "/errs/" + file, "rb"))
+			errors = pickle.load(open(scr_path + "/" + model_name\
+								 + "/errs/" + file, "rb"))
 			indexed_errors.append(errors)	
 
 		for file in dir_params:
-			params_list = pickle.load(open(scr_path + "/" + model_name + "/params/" + file, "rb"))
+			params_list = pickle.load(open(scr_path + "/" + model_name\
+								 + "/params/" + file, "rb"))
 			parameter_list.append(params_list)
 
 
@@ -373,8 +374,10 @@ def iter_SMM(eggbasket_config,
 		
 		errors_arr = np.array(indexed_errors[:,1]).astype(np.float64)
 
-		error_indices_sorted = np.take(indexed_errors[:,0], np.argsort(-errors_arr))
-		errors_arr_sorted = np.take(errors_arr, np.argsort(-errors_arr))
+		error_indices_sorted = np.take(indexed_errors[:,0],\
+																	 np.argsort(-errors_arr))
+		errors_arr_sorted = np.take(errors_arr,\
+																	 np.argsort(-errors_arr))
 		
 		number_N = len(error_indices_sorted)
 		
@@ -392,9 +395,11 @@ def iter_SMM(eggbasket_config,
 		error_S = S_star[int(d +t)]\
 						- S_star[int(d +t -1)]
 
-		means, cov = gen_param_moments(elite_errors,sampmom,parameter_list_dict,\
-								param_random_bounds,\
-								elite_indices, weights,t)
+		means, cov = gen_param_moments(elite_errors,sampmom,\
+																		parameter_list_dict,\
+																		param_random_bounds,\
+																		elite_indices, weights,t)
+		
 		if world.rank == 0:
 			print("...generated and saved sampling moments")
 		else:
@@ -413,12 +418,14 @@ def iter_SMM(eggbasket_config,
 		return None
 
 
-def gen_param_moments(elite_errors,sampmom,parameter_list_dict,
-						param_random_bounds,
-						 selected,
-						 weights,
-						 t,
-						 rho_smooth= .2):
+def gen_param_moments(elite_errors,\
+											sampmom,\
+											parameter_list_dict,
+											param_random_bounds,
+											selected,
+											weights,
+											t,
+											rho_smooth= .2):
 
 	""" Estiamate params of a sampling distribution
 
@@ -448,10 +455,11 @@ def gen_param_moments(elite_errors,sampmom,parameter_list_dict,
 		
 		sample_params.append(rand_params_i)
 
-	# get list of bounds
-	random_param_bounds_ar = np.array([(bdns) for key, bdns in param_random_bounds.items()] ) 
+	# Get list of bounds
+	random_param_bounds_ar = np.array([(bdns) for key, bdns \
+																in param_random_bounds.items()] ) 
 
-	# evaluate gradients
+	# Evaluate gradients
 	sample_params_reg = np.array(sample_params)
 	reg = LinearRegression().fit(sample_params_reg, elite_errors)
 	coeffs = reg.coef_
@@ -461,12 +469,16 @@ def gen_param_moments(elite_errors,sampmom,parameter_list_dict,
 	cov = np.cov(sample_params, aweights = weights, rowvar=0)
 
 	grad_new_params_1 = means + coeffs*1e-1
-	grad_new_params = np.clip(grad_new_params_1, random_param_bounds_ar[:, 1], random_param_bounds_ar[:, 0])
+	grad_new_params = np.clip(grad_new_params_1,\
+														 random_param_bounds_ar[:, 1],\
+														 random_param_bounds_ar[:, 0])
 
 	if t>0:
+
 		means = sampmom[0]*rho_smooth + (1-rho_smooth)*means
 		cov = sampmom[1]*rho_smooth + (1-rho_smooth)*cov
 	else: 
+
 		pass 
 
 	means = .9 * means + .1* grad_new_params
@@ -602,6 +614,7 @@ if __name__ == "__main__":
 					.format(np.abs(np.max(sampmom[1]))))
 		else:
 			pass 
+
 		gc.collect()
 		node_world.Barrier()
 		t = t+1
