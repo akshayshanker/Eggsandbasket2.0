@@ -60,12 +60,17 @@ def lsmodel_function_factory(parameters,
     nu_r_4          =        parameters['nu_r_4']
     psi_adj         =        parameters['psi']
 
+    if rho >= -.01 and rho <= .01:
+        rho = .01
+    else:
+        pass
+
     @njit
     def u(c,s,alpha):
-        c = c
-        s = s
-        U = (((1-alpha)*(c**rho) + alpha*(s**rho))**((1-gamma)/rho) - 1)/(1-gamma) 
-        return U #Verified
+        c = max(1e-10,c)
+        s = max(1e-10,s)
+        U = (p_power(((1-alpha)*p_power(c,rho) + alpha*p_power(s,rho)),((1-gamma)/rho)) - 1)/(1-gamma) 
+        return U 
 
     @njit
     def uc(c,s, alpha):
@@ -92,20 +97,20 @@ def lsmodel_function_factory(parameters,
 
     @njit
     def u_vec(c,s, alpha):
-        c = c*1E5
-        s = s*1E5
+        c = c
+        s = s
 
         return  (p_power(((1-alpha)*p_power(c,rho) + alpha*p_power(s,rho)),((1-gamma)/rho)) - 1)/(1-gamma) 
     
-    @njit(error_model="numpy") 
+    @njit
     def uh(c,s, alpha):
         "Derivative of utility function wrt to housing"
-        return max(1e-200,(alpha*s**(rho-1))*(((1-alpha)*(c**rho) + (alpha*s**rho)))**(((1-gamma)/rho) - 1))
+        return (alpha*s**(rho-1))*(((1-alpha)*(c**rho) + ((alpha)*s**rho)))**(((1-gamma)/rho) - 1)
 
     @njit
     def ces_c1(c,s,alpha,uc):
         U_c1 = (((1-alpha)*(c**(rho-1)))*((1-alpha)*(c**rho) + alpha*(s**rho))**(((1-gamma)/rho)-1)) - uc
-        return U_c1  #Semi-Verified
+        return U_c1
 
     @njit
     def uc_inv(uc, h, alpha):
@@ -113,7 +118,7 @@ def lsmodel_function_factory(parameters,
 
         exp_h = alpha*(gamma-1)/(gamma*(alpha-1)-alpha)
         exp_uc = 1/(gamma*(alpha-1)-alpha)
-        return max(1e-100,((uc/(1-alpha))**(exp_uc)))*max(1e-100,(h**exp_h))
+        return max(1e-250,((uc/(1-alpha))**(exp_uc)))*max(1e-250,(h**exp_h))
 
 
     @njit
@@ -122,7 +127,7 @@ def lsmodel_function_factory(parameters,
 
         exp_h = (1-alpha*(1-gamma))/((1-alpha)*(1-gamma))
         exp_uc = 1/(1-alpha)*(1-gamma)
-        return max((uc/alpha)**(exp_uc), 1e-100)*max(h**exp_h, 1e-100)
+        return max((uc/alpha)**(exp_uc), 1e-250)*max(h**exp_h, 1e-250)
     
     @njit
     def b(A):

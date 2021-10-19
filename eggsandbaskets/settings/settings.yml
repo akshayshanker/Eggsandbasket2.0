@@ -386,29 +386,29 @@ male:
     v_E: 'Employer contribution rate '
     v_S: Standard member  contributions rate
   parameters:
-    A_max_R: 30.0
-    A_max_W: 20.0
+    A_max_R: 20.0
+    A_max_W: 15.0
     A_max_WE: 30.0
-    A_max_WW: 30.0
+    A_max_WW: 20.0
     A_min: 1.0e-05
     A_min_W: 1.0e-05
     C_max: 15.0
     C_min: 5.0e-08
-    DC_max: 20.0
+    DC_max: 14.0
     DC_min: .1
     H_max: 16
     HS_max: 16
-    H_min: 1.0e-2
+    H_min: 1.0e-05
     ID: 188198904234
-    M_max: 0.8
+    M_max: 1.0
     M_min: 0.0
-    Q_max: 1.35
+    Q_max: 1.75
     Q_min: 0.1
     R: 64.0
     T: 99.0
     alpha: 1.0
-    alpha_bar: 0.4
-    beta_bar: 0.91
+    alpha_bar: 0.6
+    beta_bar: 0.9
     beta_m: 1
     r_m: .0614
     def_pi: 0.7
@@ -417,14 +417,14 @@ male:
     f_ASF: 1.0
     f_LSF: 0.23
     gamma: 3.3
-    grid_size_A: 15.0
+    grid_size_A: 18.0
     grid_size_C: 15.0
-    grid_size_DC: 9.0
-    grid_size_DCR: 2.0
-    grid_size_H: 15.0
-    grid_size_HS: 20.0
-    grid_size_M: 9.0
-    grid_size_Q: 6.0
+    grid_size_DC: 8.0
+    grid_size_DCR: 3.0
+    grid_size_H: 18.0
+    grid_size_HS: 18.0
+    grid_size_M: 8.0
+    grid_size_Q: 8.0
     grid_size_Q_s: 3.0
     grid_size_W: 3.0
     grid_size_alpha: 1.0
@@ -454,7 +454,7 @@ male:
     r_H: 0.032
     r_h: 0.0476
     r_l: 0.0193
-    rho: .05
+    rho: -2
     rho_alpha: 0.8
     rho_beta: 0.8
     sigma_DB_V: .000322
@@ -464,17 +464,22 @@ male:
     sigma_alpha: 0.02
     sigma_beta: 0.02
     sigma_d: 0.064
-    sigma_plan: .2
+    sigma_plan: .9
     sigma_r_H: 0.042
     sigma_w: 0.0221957
     tau_housing: 0.08
-    theta: 8
+    theta: 7
     tzero: 16.0
     v_E: 0.17
     v_S: 0.0235
+    nu_a_0: 5.44
+    nu_a_1: 0.2815
+    nu_a_2: 0.002448
+    nu_a_3: 0.15
   risk_share_points:
     - 0.0
     - 0.7
+    - 0.95
     - 1.0
   survival:
   - 0.995905
@@ -579,10 +584,313 @@ male:
   - 0.00001
   vol_cont_points:
   - 0.0
-  - 0.01
-  - 0.034
-  - 0.08
-  - 0.18
+  - 0.01077924
+  - 0.03404
+  - 0.1
+  normalisation:
+  - 1
+  - .00001
+
+male_big:
+  lambdas:
+  - 9.3727655
+  - 0.1090508
+  - -0.00293958
+  - 4.127e-05
+  - -2.334e-07
+  - 0.01516798
+  - -0.00012572
+  parameter_description:
+    A_max_R: Maximum liquid assets for retirees
+    A_max_W: Maximum liquid assets for workers
+    A_max_WE: Max  total wealth for retirees
+    A_max_WW: Max total wealth for retirees
+    A_min: Min liquid assets
+    A_min_W: min wealth for workers
+    C_max: 'Max consumption'
+    C_min: 'Min consumption'
+    DC_max: Naximum pension assets M
+    DC_min: Min pension assets
+    H_max: 'Maxumum housing assets'
+    HS_max: 'Maximum for housing services'
+    H_min: 'Min housing assets '
+    M_max: 'max mnortgage share '
+    M_min: min mortgage share
+    Q_max: 'Max house price '
+    Q_min: Min house price
+    R: Retirement age -1
+    T: Age of certain death -1
+    alpha: 'Standard contribution DC share parameter '
+    alpha_bar: 'Mean of housing preference shock'
+    beta_bar: 'Mean of time preference shock'
+    beta_m: mortgage rate mark-up
+    def_pi: Default DC portolio risk share
+    delta_housing: ' Depreciation rate for housing '
+    f_ACF: Average contribution factor
+    f_ASF: Average service factor
+    f_LSF: ''
+    gamma: Risk aversion parameter in utility
+    grid_size_A: Grid side for non-pensions liquid assets
+    grid_size_C: 'Grid size for consumption'
+    grid_size_DC: Grid size of pension wealth in DC
+    grid_size_DCR: 'Size of DC pension asset process grid '
+    grid_size_H: Grid size for housing wealth
+    grid_size_HS: Grid size for housing services 
+    grid_size_M: 'Grid size for mortgages'
+    grid_size_Q: 'Size of the house price grid '
+    grid_size_Q_s: Size of the house price shock grid (seems that we cannot have more
+      of these than Q points)
+    grid_size_W: 'Size of the wage shock process '
+    grid_size_alpha: 'Number of points in alpha shock process'
+    grid_size_beta: 'Number of points in beta shock process'
+    h: 'Scaling factor for high risk pension asset'
+    k: Bequest curvature
+    kappa_m: scaling factor for mortgage rate
+    l: 'Scaling factor for low risk pension asset '
+    nu_p_0: 'Adj. cost parameter for pension plan'
+    nu_p_1: 'Adj. cost parameter for pension plan'
+    nu_p_2: 'Adj. cost parameter for pension plan'
+    nu_r_0: 'Adj. cost parameter for risk share'
+    nu_r_1: 'Adj. cost parameter for risk share'
+    nu_r_2: 'Adj. cost parameter for risk share'
+    nu_r_3: 'Adj. cost parameter for risk share'
+    nu_r_4: 'Adj. cost parameter for risk share'
+    nu_v_0: 'Adj. cost parameter for Vol. cont share'
+    nu_v_1: 'Adj. cost parameter for Vol. cont share'
+    nu_v_2: 'Adj. cost parameter for Vol. cont share'
+    nu_v_3: 'Adj. cost parameter for Vol. cont share'
+    phi_c:  'Homeowner deposit rate'
+    phi_d: 'rRepayment to income ratio '
+    phi_w: 'Wage shock persistence '
+    psi: 'default preference parmater'
+    r: 'Rate of return on risk-free liquid asset (percent points/100)'
+    r_H: 'Housing rate of return mean (percent points/100)'
+    r_h: 'Mean rate of return risky DC pension asset (percent points/100)'
+    r_l: 'Mean rate of return safe  DC pension asset (percent points/100)'
+    rho: Elasticity of substitution between housing and consumption
+    rho_alpha: 'Persistence in log alpha process'
+    rho_beta: 'Persistence in log beta process'
+    sigma_DB_V: Scale parameter for voluntary contributions Type 1 evd
+    sigma_DB_pi: Scale parameter for risky assets contributions Type 1 evd
+    sigma_DC_V: Scale parameter for voluntary contributions Type 1 evd
+    sigma_DC_pi: Scale parameter for risky assets contributions Type 1 evd
+    sigma_alpha: 'Standard deviatio of log alpha process'
+    sigma_beta: 'Standard deviatio of log beta process'
+    sigma_d: 'Variance of default share pension asset (log) returns process' 
+    sigma_plan: Scale DB vs DC
+    sigma_r_H: 'Standard deviation of the housing rate of return (not in logs)'
+    sigma_w: 'Standard deviation of wage uncertainty shock'
+    tau_housing: 'Housing adjustment cost parameter '
+    theta: 'Bequest theta '
+    tzero: Enrollment age -1
+    v_E: 'Employer contribution rate '
+    v_S: Standard member  contributions rate
+  parameters:
+    A_max_R: 20.0
+    A_max_W: 15.0
+    A_max_WE: 30.0
+    A_max_WW: 20.0
+    A_min: 1.0e-05
+    A_min_W: 1.0e-05
+    C_max: 15.0
+    C_min: 5.0e-08
+    DC_max: 14.0
+    DC_min: .1
+    H_max: 16
+    HS_max: 16
+    H_min: 1.0e-05
+    ID: 188198904234
+    M_max: 1.0
+    M_min: 0.0
+    Q_max: 1.75
+    Q_min: 0.1
+    R: 64.0
+    T: 99.0
+    alpha: 1.0
+    alpha_bar: 0.6
+    beta_bar: 0.9
+    beta_m: 1
+    r_m: .0614
+    def_pi: 0.7
+    delta_housing: 0.01
+    f_ACF: 0.8625
+    f_ASF: 1.0
+    f_LSF: 0.23
+    gamma: 3.3
+    grid_size_A: 25.0
+    grid_size_C: 15.0
+    grid_size_DC: 10.0
+    grid_size_DCR: 3.0
+    grid_size_H: 25.0
+    grid_size_HS: 25.0
+    grid_size_M: 10.0
+    grid_size_Q: 10.0
+    grid_size_Q_s: 3.0
+    grid_size_W: 3.0
+    grid_size_alpha: 2.0
+    grid_size_beta: 2.0
+    h: 1.68
+    k: 2.64169
+    kappa_m: 0.33
+    l: 0.54
+    nu_p_0: -0.9
+    nu_p_1: -0.112
+    nu_p_2: 0.000875
+    nu_r_0: -0.1
+    nu_r_1: -0.033
+    nu_r_2: 0.0001308
+    nu_r_3: 0.109
+    nu_r_4: 2.108
+    nu_v_0: .3
+    nu_v_1: 48.531
+    nu_v_2: -0.001018
+    nu_v_3: -0.346
+    phi_c: 0.2
+    phi_r: .041
+    phi_d: 0.2
+    phi_w: 0.4044149
+    psi: 2
+    r: 0.025
+    r_H: 0.032
+    r_h: 0.0476
+    r_l: 0.0193
+    rho: -2
+    rho_alpha: 0.8
+    rho_beta: 0.8
+    sigma_DB_V: .000322
+    sigma_DB_pi: 0.3022
+    sigma_DC_V: .0003022
+    sigma_DC_pi: 0.1351
+    sigma_alpha: 0.02
+    sigma_beta: 0.02
+    sigma_d: 0.064
+    sigma_plan: .9
+    sigma_r_H: 0.042
+    sigma_w: 0.0221957
+    tau_housing: 0.08
+    theta: 7
+    tzero: 16.0
+    v_E: 0.17
+    v_S: 0.0235
+    nu_a_0: 5.44
+    nu_a_1: 0.2815
+    nu_a_2: 0.002448
+    nu_a_3: 0.15
+  risk_share_points:
+    - 0.0
+    - 0.107
+    - 0.503813
+    - 0.7
+    - 0.95163
+    - 1.0
+  survival:
+  - 0.995905
+  - 0.99971
+  - 0.99982
+  - 0.999855
+  - 0.9999
+  - 0.999885
+  - 0.999855
+  - 0.999915
+  - 0.999865
+  - 0.999935
+  - 0.999905
+  - 0.99993
+  - 0.999915
+  - 0.99989
+  - 0.999835
+  - 0.9998
+  - 0.999695
+  - 0.999565
+  - 0.999465
+  - 0.99943
+  - 0.999385
+  - 0.999375
+  - 0.99946
+  - 0.99941
+  - 0.99939
+  - 0.999375
+  - 0.99936
+  - 0.999335
+  - 0.9994
+  - 0.999205
+  - 0.999275
+  - 0.99919
+  - 0.9991
+  - 0.99903
+  - 0.999
+  - 0.998945
+  - 0.9989
+  - 0.998805
+  - 0.9987
+  - 0.99873
+  - 0.99861
+  - 0.99862
+  - 0.99845
+  - 0.99819
+  - 0.998245
+  - 0.998055
+  - 0.99785
+  - 0.99778
+  - 0.99746
+  - 0.9974
+  - 0.99702
+  - 0.996775
+  - 0.99664
+  - 0.996435
+  - 0.99598
+  - 0.99549
+  - 0.99528
+  - 0.994855
+  - 0.994575
+  - 0.99414
+  - 0.99325
+  - 0.992825
+  - 0.99216
+  - 0.991745
+  - 0.99088
+  - 0.98953
+  - 0.98888
+  - 0.987475
+  - 0.986245
+  - 0.98494
+  - 0.982755
+  - 0.981495
+  - 0.979795
+  - 0.97724
+  - 0.97517
+  - 0.97161
+  - 0.9693
+  - 0.96521
+  - 0.96062
+  - 0.955655
+  - 0.950075
+  - 0.94398
+  - 0.93554
+  - 0.926915
+  - 0.918595
+  - 0.909875
+  - 0.896755
+  - 0.886295
+  - 0.87407
+  - 0.859885
+  - 0.83792
+  - 0.824475
+  - 0.800655
+  - 0.780865
+  - 0.75574
+  - 0.74289
+  - 0.720915
+  - 0.69844
+  - 0.67567
+  - 0.00001
+  vol_cont_points:
+  - 0.0
+  - 0.01077924
+  - 0.03404
+  - 0.0857
+  - 0.18145
+  - 0.26996
   normalisation:
   - 1
   - .00001

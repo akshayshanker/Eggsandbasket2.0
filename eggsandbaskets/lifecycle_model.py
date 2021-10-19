@@ -132,8 +132,9 @@ class LifeCycleModel:
 						self.T = int(self.T)
 						# overide pre-set welath and mortgage max
 						#self.M_max = self.H_max*self.Q_max*(1-self.phi_c)
-						self.A_max_WW = self.H_max*self.Q_max*(1-self.phi_c) + self.A_max_W
-						self.A_max_WE = self.H_max*self.Q_max*(1-self.phi_c) + self.A_max_R
+						self.A_max_WW = self.H_max + self.A_max_W
+						self.A_max_WE = self.H_max + self.A_max_R
+
 
 						# set grid sizes as int
 						self.grid_size_A, self.grid_size_DC, \

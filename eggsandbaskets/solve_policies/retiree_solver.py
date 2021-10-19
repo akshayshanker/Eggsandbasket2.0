@@ -310,7 +310,7 @@ def retiree_func_factory(og):
 	def liq_rent_FOC(a_prime, cons, h, q, UC_prime,t):
 
 		points = np.array([a_prime, H_min, q, 0])
-		UC_prime_RHS = eval_linear_c(X_cont_R, UC_prime, points, xto.CONSTANT)
+		UC_prime_RHS = eval_linear_c(X_cont_R, UC_prime, points, xto.NEAREST)
 
 		return uc(cons, h, alpha_housing) - UC_prime_RHS
 
@@ -404,8 +404,8 @@ def retiree_func_factory(og):
 								   UC_prime, t)
 
 		points = np.array([x_prime,h,q, m_prime])
-		UC_prime_RHS  = max(1e-250, eval_linear_c(X_cont_R, UC_prime, points, xto.LINEAR))
-		UC_prime_H_RHS  = max(1e-250,eval_linear_c(X_cont_R, UC_prime_H, points, xto.LINEAR))
+		UC_prime_RHS  = max(1e-250, eval_linear_c(X_cont_R, UC_prime, points, xto.NEAREST))
+		UC_prime_H_RHS  = max(1e-250,eval_linear_c(X_cont_R, UC_prime_H, points, xto.NEAREST))
 		
 		c_t = max(C_min, uc_inv(max(1e-300, UC_prime_RHS), h, alpha_housing))
 
@@ -471,11 +471,11 @@ def retiree_func_factory(og):
 
 		pointsf = np.array([x_prime,h,q, 0])
 		UC_prime_RHSf  = max(1e-250, eval_linear_c(X_cont_R, UC_prime, \
-											pointsf, xto.LINEAR))
+											pointsf, xto.NEAREST))
 		UC_prime_H_RHSf  = max(1e-250,eval_linear_c(X_cont_R, UC_prime_H,\
-											 pointsf, xto.LINEAR))
+											 pointsf, xto.NEAREST))
 		UC_prime_M_RHSf  = max(1e-250,eval_linear_c(X_cont_R, UC_prime_M,\
-											 pointsf, xto.LINEAR))
+											 pointsf, xto.NEAREST))
 
 
 		if UC_prime_H_RHSf < UC_prime_M_RHSf:
@@ -487,9 +487,9 @@ def retiree_func_factory(og):
 		points = np.array([x_prime,h,q, m_prime])
 
 		UC_prime_RHS  = max(1e-250,eval_linear_c(X_cont_R, UC_prime,\
-													 points, xto.LINEAR))
+													 points, xto.NEAREST))
 		UC_prime_H_RHS  = max(1e-250,eval_linear_c(X_cont_R, UC_prime_H,\
-													 points, xto.LINEAR))
+													 points, xto.NEAREST))
 
 		RHS = uc(c, h, alpha_housing) * q * (1 + tau_housing) - UC_prime_H_RHS
 
@@ -512,9 +512,9 @@ def retiree_func_factory(og):
 		points = np.array([x_prime, h,q,m])
 
 		UC_prime_RHS = max(1e-250,eval_linear_c(X_cont_R, UC_prime, points,\
-											  	xto.LINEAR))
+											  	xto.NEAREST))
 		UC_prime_M_RHS = max(1e-250, eval_linear_c(X_cont_R, UC_prime_M, points,\
-											 	xto.LINEAR))
+											 	xto.NEAREST))
 
 		return UC_prime_RHS - UC_prime_M_RHS
 
@@ -566,7 +566,7 @@ def retiree_func_factory(og):
 		points = np.array([x_prime, h,q,m_prime])
 
 		UC_prime_RHS = max(1e-250, eval_linear_c(X_cont_R, UC_prime, points,\
-														 xto.LINEAR))
+														 xto.NEAREST))
 
 		c_t = max(C_min, uc_inv(max(1e-250, UC_prime_RHS), h, alpha_housing))
 
@@ -709,8 +709,8 @@ def retiree_func_factory(og):
 
 		# evaluate array of next period eta adjustment multipliers
 
-		#v_prime_vals_adj = eval_linear_c(X_cont_R, UF_dbprime, state_prime_R, xto.LINEAR)
-		#v_prime_vals_noadj = eval_linear_c(X_cont_R, UF_dbprime, state_prime_R, xto.LINEAR)
+		#v_prime_vals_adj = eval_linear_c(X_cont_R, UF_dbprime, state_prime_R, xto.NEAREST)
+		#v_prime_vals_noadj = eval_linear_c(X_cont_R, UF_dbprime, state_prime_R, xto.NEAREST)
 
 		# evaluate where adjustment occurs
 		# adjustment occurs where someone eta >1
@@ -722,13 +722,13 @@ def retiree_func_factory(og):
 		c_prime_adj_vals, a_prime_adj_vals,\
 		h_prime_adj_vals = eval_linear_c(X_QH_R,
 										   c_prime_adj,
-										   state_prime_RW, xto.LINEAR),\
+										   state_prime_RW, xto.NEAREST),\
 								eval_linear_c(X_QH_R,
 											a_prime_adj,
-											state_prime_RW, xto.LINEAR), \
+											state_prime_RW, xto.NEAREST), \
 								eval_linear_c(X_QH_R,
 											h_prime_adj,
-											state_prime_RW, xto.LINEAR)
+											state_prime_RW, xto.NEAREST)
 
 		c_prime_adj_vals[c_prime_adj_vals <= C_min] = C_min
 		c_prime_adj_vals[np.isnan(c_prime_adj_vals)] = C_min
@@ -742,8 +742,8 @@ def retiree_func_factory(og):
 		# STEP 4: calc cons and a_prime for non-adjusters
 
 		c_prime_noadj_vals, a_prime_noadj_vals = eval_linear_c(
-			X_cont_R, c_prime_noadj, state_prime_R, xto.LINEAR), eval_linear_c(
-			X_cont_R, a_prime_noadj, state_prime_R, xto.LINEAR)
+			X_cont_R, c_prime_noadj, state_prime_R, xto.NEAREST), eval_linear_c(
+			X_cont_R, a_prime_noadj, state_prime_R, xto.NEAREST)
 
 		c_prime_noadj_vals[c_prime_noadj_vals <= C_min] = C_min
 		c_prime_noadj_vals[np.isnan(c_prime_noadj_vals)] = C_min
@@ -789,17 +789,17 @@ def retiree_func_factory(og):
 		UF_dp_val_noadj = beta_bar * eval_linear_c(X_cont_R, \
 												UF_dbprime,\
 												state_dp_prime_noadj,\
-												xto.LINEAR)
+												xto.NEAREST)
 
 		UH_dp_val_norent = eval_linear_c(X_cont_R,\
 													UH_dbprime,\
 													state_dp_prime_noadj,\
-													xto.LINEAR)
+													xto.NEAREST)
 
 		UF_dp_val_adj = beta_bar * eval_linear_c(X_cont_R,\
 												UF_dbprime,\
 												state_dp_prime_adj,\
-												 xto.LINEAR)
+												 xto.NEAREST)
 
 		V_noadj = u_vec(c_prime_noadj_vals, h_prime_noadj_vals, alpha_housing)\
 					 + UF_dp_val_noadj
@@ -839,7 +839,7 @@ def retiree_func_factory(og):
 		# STEP 9: combine all  renter policies
 
 		h_prime_rent_val = eval_linear_c(W_Q_R, h_prime_rent,
-									   state_prime_rent, xto.LINEAR)
+									   state_prime_rent, xto.NEAREST)
 
 		#c_prime_rent_val = phi_r * Q_prime * h_prime_rent_val\
 		#	* (1 - alpha_housing) / alpha_housing
@@ -871,7 +871,7 @@ def retiree_func_factory(og):
 						   h_prime_val_norent, alpha_housing)
 
 		UF_dp_val_rent = beta_bar * \
-			eval_linear_c(X_cont_R, UF_dbprime, state_dp_prime_rent, xto.LINEAR)
+			eval_linear_c(X_cont_R, UF_dbprime, state_dp_prime_rent, xto.NEAREST)
 
 		# STEP 10: make renting vs. no renting decision  and combine all
 		# policies
@@ -946,13 +946,13 @@ def retiree_func_factory(og):
 
 			# get RHS of Euler equation when max. mortgage taken
 			# (max given by grid max)
-			UC_prime_RHSm = eval_linear_c(X_cont_R, UC_prime, points_max, xto.CONSTANT)
-			UC_prime_M_RHSm = eval_linear_c(X_cont_R, UC_prime_M, points_max, xto.CONSTANT)
+			UC_prime_RHSm = eval_linear_c(X_cont_R, UC_prime, points_max, xto.NEAREST)
+			UC_prime_M_RHSm = eval_linear_c(X_cont_R, UC_prime_M, points_max, xto.NEAREST)
 
 			# get RHS of Euler when min mortage taken
 			# (no negative mortgages )
-			UC_prime_RHSf = eval_linear_c(X_cont_R, UC_prime, points_full_pay, xto.CONSTANT)
-			UC_prime_M_RHSf =eval_linear_c(X_cont_R, UC_prime_M, points_full_pay, xto.CONSTANT)
+			UC_prime_RHSf = eval_linear_c(X_cont_R, UC_prime, points_full_pay, xto.NEAREST)
+			UC_prime_M_RHSf = eval_linear_c(X_cont_R, UC_prime_M, points_full_pay, xto.NEAREST)
 
 			if mort_FOC(0, *m_mort_args)\
 					* mort_FOC(M[-1], *m_mort_args) < 0:
@@ -1225,25 +1225,25 @@ def retiree_func_factory(og):
 		H_prime_adj_val = eval_linear_c(X_QH_R,
 									  h_prime_adj,
 									  points,
-									  xto.LINEAR)
+									  xto.NEAREST)
 
 		H_prime_adj_val[H_prime_adj_val < H_min] = H_min
 
 		c_prime_adj_val = eval_linear_c(X_QH_R,
 									  c_prime_adj,
-									  points, xto.LINEAR)
+									  points, xto.NEAREST)
 
 		c_prime_adj_val[c_prime_adj_val < C_min] = C_min
 
 		a_prime_adj_val = eval_linear_c(X_QH_R,
 									  a_prime_adj,
 									  points,
-									  xto.LINEAR)
+									  xto.NEAREST)
 
 		vf_val = eval_linear_c(X_QH_R,
 									  a_prime_adj,
 									  points,
-									  xto.LINEAR) 
+									  xto.NEAREST) 
 
 		a_prime_adj_val[a_prime_adj_val < A_min] = A_min
 
@@ -1278,21 +1278,21 @@ def retiree_func_factory(og):
 		#etavals = eval_linear_c(X_cont_R,
 		#					  eta_prime_noadj,
 		#					  points,
-		#					  xto.LINEAR)
+		#					  xto.NEAREST)
 
 		H_prime_noadj_val = points[:, 1] * (1 - delta_housing)
 
 		c_prime_noadj_val = eval_linear_c(X_cont_R,
 										c_prime_noadj,
 										points,
-										xto.LINEAR)
+										xto.NEAREST)
 
 		c_prime_noadj_val[c_prime_noadj_val < C_min] = C_min
 
 		a_prime_noadj_val = eval_linear_c(X_cont_R,
 										a_prime_noadj,
 										points,
-										xto.LINEAR)
+										xto.NEAREST)
 
 		a_prime_noadj_val[a_prime_noadj_val < 0] = 0
 
@@ -1310,11 +1310,11 @@ def retiree_func_factory(og):
 		vf_val = eval_linear_c(X_cont_R,
 							VF,
 							points,
-							xto.LINEAR)
+							xto.NEAREST)
 		uh_prime_val = eval_linear_c(X_cont_R,
 							UH_prime,
 							points,
-							xto.LINEAR)
+							xto.NEAREST)
 
 		return c_prime_noadj_val, H_prime_noadj_val, mort_db_prime_noadj, vf_val, uh_prime_val
 
@@ -1328,7 +1328,7 @@ def retiree_func_factory(og):
 		h_prime_rent_val = eval_linear_c(W_Q_R,
 									   h_prime_rent,
 									   points,
-									   xto.LINEAR)
+									   xto.NEAREST)
 
 		c_prime_rent_val = phi_r * points[0, 1] * h_prime_rent_val\
 			* (1 - alpha_housing) / alpha_housing
@@ -1452,11 +1452,11 @@ def retiree_func_factory(og):
 				# loop over R period wage stock realisation. 
 				for j in range(len(E)):
 
-					a_l_exDC = DB_payout[j]\
+					a_l_exDC = DB_payout[j] * (1-0.15)\
 						* (1 - acc_ind)\
 						+ (1 + r) * A[my_X_all_hat_ind[i][5]]
 
-					a_l = A_DC_prime + a_l_exDC
+					a_l = A_DC_prime * (1-0.15) + a_l_exDC
 
 					# Wealth net of mortgage liability for adjusters
 					wealth = a_l + Q_prime * H_in * \
@@ -1551,7 +1551,7 @@ def retiree_func_factory(og):
 							len(a_prime_rent_val), 0)))
 
 					UF_dp_val_rent = beta_bar * eval_linear_c(
-						X_cont_R, UF_dbprime, state_dp_prime_rent, xto.LINEAR)
+						X_cont_R, UF_dbprime, state_dp_prime_rent, xto.NEAREST)
 					val_rent = u_rent + UF_dp_val_rent
 				   
 					# Index to rent or not.

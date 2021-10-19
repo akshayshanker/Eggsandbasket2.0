@@ -6,7 +6,7 @@ import yaml
 from interpolation.splines import extrap_options as xto
 from interpolation.splines import eval_linear
 
-@njit(cache = True)
+@njit(cache= True)
 def eval_linear_c(grid, func, point, xto):
 	return eval_linear(grid, func, point, xto)
 
@@ -26,7 +26,15 @@ def read_settings(settings_path):
 		for row in reader_ran:
 			param_random_bounds[row['parameter']] = np.float64([row['LB'],\
 				row['UB']])
-	return eggbasket_config, param_random_bounds
+
+	param_random_bounds_big = {}
+	with open(settings_path + '/random_param_bounds_big.csv', newline='') as pscfile:
+		reader_ran = csv.DictReader(pscfile)
+		for row in reader_ran:
+			param_random_bounds_big[row['parameter']] = np.float64([row['LB'],\
+				row['UB']])
+	
+	return eggbasket_config, param_random_bounds, param_random_bounds_big
 
 
 def gen_policyout_arrays(og):
@@ -151,7 +159,7 @@ def gen_policyout_arrays(og):
 			all_state_A_last_shape, policy_shape_nadj, policy_shape_adj,\
 			policy_shape_rent, prob_v_shape, prob_pi_shape
 
-@njit(cache = True)
+@njit(cache= True)
 def sim_markov(P, P_stat, U):
 	""" Simulate markov chain length
 		len(U) with probability matrix
@@ -175,7 +183,7 @@ def sim_markov(P, P_stat, U):
 
 	return index_series
 
-@njit(cache = True)
+@njit(cache= True)
 def d0(v1,v2):
 	""" eval inner product of two arrays
 	""" 
@@ -185,8 +193,8 @@ def d0(v1,v2):
 		out += v1[k] * v2[k]
 	return out
 
-@njit(cache = True)
-def interp_as(xp,yp,x, extrap = True):
+@njit(cache= True)
+def interp_as(xp,yp,x, extrap = False):
 
 	"""Function  interpolates 1D
 	with linear extraplolation 
@@ -230,7 +238,7 @@ def interp_as(xp,yp,x, extrap = True):
 	return evals
 
 
-@njit(cache = True)
+@njit
 def dot_py(A,B):
 	m, n = A.shape
 	p = B.shape[1]
@@ -243,7 +251,7 @@ def dot_py(A,B):
 				C[i,j] += A[i,k]*B[k,j] 
 	return C
 
-@njit(cache = True)
+@njit(cache= True)
 def _my_einsum_row(my_A,my_B):
 	my_out = np.empty(len(my_A))
 	for i in range(len(my_A)):

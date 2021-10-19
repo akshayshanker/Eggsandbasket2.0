@@ -15,71 +15,19 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from matplotlib.colors import DivergingNorm
 
-import pathos
-
 
 # Housing model modules
 import lifecycle_model 
 from solve_policies.worker_solver import generate_worker_pols
 from generate_timeseries.tseries_generator import gen_panel_ts,\
-					 gen_moments, sortmoments, genprofiles_operator
+					 gen_moments, genprofiles_operator
 from util.helper_funcs import get_jobfs_path, read_settings
-
-
-
-def gen_communicators(big_world, block_size_layer_1, 
-						block_size_layer_2,
-						block_size_layer_ts):
-
-	""" Generates sub-communicators. There are N 
-		Layer 1 communicator groups with 8 cores each,
-		each solving a model for a parameter vector. There are N/2 
-		Layer 2 communicator groups with 4 cores each, each layer 2
-		group solving a DB or DC for a parameter vector""" 
-
-	# Number cores to process each LS model 
-	# Should be 2x2
-
-	# create worlds on each node so they can share mem
-	# we
-	node_world = big_world.Split_type(split_type = 0)
-	big_world_rank = big_world.Get_rank()
-
-	world_size = node_world.Get_size()
-	world_rank = node_world.Get_rank()
-	blocks_layer_1 = world_size/block_size_layer_1
-	color_layer_1 = int(world_rank/block_size_layer_1)
-	key_layer1 = int(world_rank%block_size_layer_1)
-
-	layer_1_comm = node_world.Split(color_layer_1,key_layer1)
-	layer_1_rank = layer_1_comm.Get_rank()
-
-	# Number of cores to process each DB/DC
-	blocks_layer_2 = block_size_layer_1/block_size_layer_2
-	color_layer_2 = int(layer_1_rank/block_size_layer_2)
-	key_layer2 = int(layer_1_rank%block_size_layer_1)
-
-	layer_2_comm = layer_1_comm.Split(color_layer_2,key_layer2)
-	layer_2_rank = layer_2_comm.Get_rank()
-
-	# TS generation layers
-	blocks_layer_ts = world_size/block_size_layer_ts
-	color_layer_ts = int(world_rank/block_size_layer_ts)
-	key_layer_ts = int(world_rank%block_size_layer_ts)
-
-	layer_ts_comm = node_world.Split(color_layer_ts,key_layer_ts)
-
-	cross_node_world = big_world.Split(int(world_rank),big_world.Get_rank())
-
-	# Generate cross- layer 1 communicator from node world
-	# Each rank in this communicator belongs to a distinct layer 1 communicator 
-
-	cross_layer1_world = node_world.Split(int(layer_1_rank),node_world.Get_rank())
-
-	return layer_1_comm, layer_2_comm, layer_ts_comm, node_world,\
-			cross_node_world, cross_layer1_world
+from generate_timeseries.ts_helper_funcs import sortmoments
+from generate_timeseries.plot_ts import plot_moments_ts
+from smm import gen_communicators
 
 def plot_retiree(pols, og):
+
 	consumption = np.empty((len(og.grid1d.M), len(og.grid1d.A_R)))
 	assets_prime = np.empty((len(og.grid1d.M), len(og.grid1d.A_R)))
 	H_prime = np.empty((len(og.grid1d.M), len(og.grid1d.A_R)))
@@ -151,13 +99,13 @@ def plot_retiree(pols, og):
 
 
 if __name__ == "__main__":
+	
 	import csv
 	from mpi4py import MPI as MPI4py
 	import sys
 	import shutil
 
 	MPI4py.pickle.__init__(pickle.dumps, pickle.loads)
-	Process = pathos.helpers.mp.Process
 
 	world = MPI4py.COMM_WORLD
 	world_size = world.Get_size()
@@ -178,49 +126,41 @@ if __name__ == "__main__":
 	job_path = "/scratch/pv33/ls_model_temp2"
 	scr_path = "/scratch/pv33/ls_model_temp2"
 	settings_path = "settings"
+	home_path = "/home/141/as3442/Eggsandbasket2.0/eggsandbaskets/"
 	
 
 	# Read settings
 	eggbasket_config, param_random_bounds = read_settings(settings_path)
 
-	#gender = sys.argv[1]
-	gender = 'male'
+	gender = sys.argv[1]
+	#gender = 'male'
 
 	if gender == 'male':
 	# Solve male baseline (Initial submit version may 12,2021)
 	# Note '9GLB6E_20210501-181303_baseline_male' is used as male baseline ID
-		model_name = 'baseline_male_v8'
-		#params = eggbasket_config['male']
+		model_name = 'baseline_male_v9'
+		params = eggbasket_config['male']
 		top_id = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v9/topid.smms","rb"))
 		params = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v9/params/{}_params.pkl".format(top_id),"rb"))
 		param_dict = eggbasket_config['male']
 		param_dict['parameters'] = params
-		param_dict['parameters']['grid_size_M']  = 15
-		#param_dict['parameters']['A_max_R'] = 50
-		#param_dict['parameters']['C_max'] = 15
-		#param_dict['theta'] = 11
 		#sampmom = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male/latest_sampmom.smms".format(model_name),"rb"))
 		sampmom = [0,0]
+
+		#param_dict['rho'] = 0.05
+		#param_dict['grid_size_H'] = 20
+		#param_dict['gamma'] = 4
 		#shutil.rmtree(job_path+'/{}/'.format(model_name))
 		
-	# Solve female baseline (Initial submit version may 12,2021)
-	# Note '9GLB6E_20210501-181303_baseline_male' is used as male baseline ID
+	# Solve female baseline
+
 	if gender == 'female':
 		model_name = 'baseline_female'
 		params = eggbasket_config['female']
-		top_id = pickle.load(open("/scratch/pv33/ls_model_temp/final_female_v3/topid.smms".format(model_name),"rb"))
+		#top_id = pickle.load(open("/scratch/pv33/ls_model_temp/final_female_v3/topid.smms".format(model_name),"rb"))
 		sampmom = pickle.load(open("/scratch/pv33/ls_model_temp/final_male_v3/latest_sampmom.smms".format(model_name),"rb"))
-		param_dict = pickle.load(open("/scratch/pv33/ls_model_temp/final_female_v3/{}_acc_0/params.smms".format(top_id),"rb")) 
-		param_dict['grid_size_H'] = 15.0
-		param_dict['grid_size_alpha'] = 2.0
-		param_dict['grid_size_beta'] = 2.0
-		param_dict['alpha_bar'] = .49
-		param_dict['sigma_alpha'] = .02
-		param_dict['rho_alpha']  = .8
-		param_dict['sigma_beta'] = .02
-		param_dict['rho_beta']  = .8
+		#param_dict = pickle.load(open("/scratch/pv33/ls_model_temp/final_female_v3/{}_acc_0/params.smms".format(top_id),"rb")) 
 		params['parameters'] = param_dict
-
 
 	layer_1_comm, layer_2_comm, layer_ts_comm, node_world,\
 			cross_node_world, cross_layer1_world = gen_communicators(world,\
@@ -276,59 +216,59 @@ if __name__ == "__main__":
 	#if layer_1_comm.rank ==0:
 	#	plot_retiree(ret_pols, og)
 	start = time.time()
-	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = False, jobfs_path = job_path)
+	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = False, jobfs_path = job_path, verbose = True)
 
 	node_world.Barrier()
+	
+	# Generate moments 
+	
 	if cross_layer1_world.rank == 0:
-		# Generate moments 
+		
 		if layer_1_comm.rank == 0:
 
 			U = np.random.rand(6,100,TSN,100) 
 
 			gen_panel_ts('male',og,U, TSN,job_path)
-			#p = Process(target = gen_panel_ts, args = (, ))
-
-			#p.start()
-			#p.join() 
+			generate_TSDF, load_pol_array = genprofiles_operator(og)
 			mod_name = og.mod_name
 			print(time.time()- start)
 			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0'))  
 			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
 			
-
 			#TSALL_10_df,TSALL_14_df  = gen_panel_ts()
-
 			moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
 
 			moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
 
-
 			moments_sim_sorted = sortmoments(moments_male,\
 												 moments_female)
+
 			os.chdir(os.path.expanduser("~/Eggsandbasket2.0/eggsandbaskets/plots")) 
-			#pickle.dump(moments_male, open('/scratch/pv33/ls_model_temp2/{}/moments_male'.format(LS_models.mod_name), "wb"))
-			moments_sim_sorted.to_csv("moments_sorted.csv".format(model_name))
+			moments_sim_sorted.to_csv("moments_sorted_test.csv")
+
+			moments_data = pd.read_csv('{}/moments_data_plot.csv'\
+							.format(home_path + settings_path))
+
+			plot_moments_ts(moments_male,moments_female, moments_data, home_path, model_name)
 
 	node_world.Barrier()
+
 	if cross_layer1_world.rank == 1:
-		# Generate moments 
+
 		if layer_1_comm.rank == 0:
 
 			U = np.random.rand(6,100,TSN,100) 
 
 			gen_panel_ts('male',og,U, TSN,job_path)
-			#p = Process(target = gen_panel_ts, args = (, ))
 
-			#p.start()
-			#p.join() 
+			generate_TSDF, load_pol_array = genprofiles_operator(og)
+
+
 			mod_name = og.mod_name
 			print(time.time()- start)
 			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0'))  
 			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
 			
-
-			#TSALL_10_df,TSALL_14_df  = gen_panel_ts()
-
 			moments_male = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_male') 
 
 			moments_female = gen_moments(copy.copy(TSALL_10_df), copy.copy(TSALL_14_df)).add_suffix('_female')
@@ -337,8 +277,7 @@ if __name__ == "__main__":
 			moments_sim_sorted = sortmoments(moments_male,\
 												 moments_female)
 			os.chdir(os.path.expanduser("~/Eggsandbasket2.0/eggsandbaskets/plots")) 
-			#pickle.dump(moments_male, open('/scratch/pv33/ls_model_temp2/{}/moments_male'.format(LS_models.mod_name), "wb"))
-			moments_sim_sorted.to_csv("moments_sorted.csv".format(model_name))
+			moments_sim_sorted.to_csv("moments_sorted_test.csv")
 
 
 

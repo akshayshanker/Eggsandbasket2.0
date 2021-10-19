@@ -16,12 +16,13 @@ mpiexec -n 480 python3 -m mpi4py smm.py
 """
 
 # Import packages
-warnings.filterwarnings('ignore')
+
 import yaml
 import gc
 import numpy as np
 import time
 import warnings
+warnings.filterwarnings('ignore')
 import csv
 import time
 import dill as pickle 
@@ -37,8 +38,41 @@ import shutil
 import lifecycle_model 
 from solve_policies.worker_solver import generate_worker_pols
 from generate_timeseries.tseries_generator import gen_panel_ts,\
-					 gen_moments, sortmoments, genprofiles_operator
+					 gen_moments, genprofiles_operator
+from generate_timeseries.ts_helper_funcs import sortmoments
 
+
+
+
+def reset_smm(mod_name, scr_path):
+
+	mod_name  = mod_name
+	TSN = 500
+	d = 3
+	path = scr_path + "/" + "{}".format(mod_name)
+	os.makedirs(path, exist_ok = True) 
+
+	t = 0
+
+	pickle.dump(t, open(path + "/t.smms","wb")) 
+	sampmom = [0,0]
+	pickle.dump(sampmom,open(path + "/latest_sampmom.smms","wb"))
+
+
+	S_star,gamma_XEM	= np.full(d,0), np.full(d,0)
+
+
+	U = np.random.rand(6,100,TSN,100)   
+
+	pickle.dump(U,open(path + "/seed_U.smms","wb"))
+
+	pickle.dump(gamma_XEM,open(path + "/gamma_XEM.smms","wb"))
+
+	pickle.dump(S_star,open(path + "/S_star.smms","wb"))
+
+	pickle.dump(sampmom,open(path + "/latest_sampmom.smms","wb"))
+
+	return None
 
 def gen_communicators(big_world,
 						block_size_layer_1, 
@@ -119,7 +153,7 @@ def gen_format_moments(TS1,TS2, moments_data, gender):
 	
 	moments_sim_array = np.array(np.ravel(moments_sim_sorted))
 
-	moments_sim_array[np.isnan(moments_sim_array)] = 1
+	#moments_sim_array[np.isnan(moments_sim_array)] = 0
 
 	moments_data = moments_data.loc[:,moments_data.columns.str\
 									.endswith('_'+gender)] 
@@ -153,7 +187,7 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 									world_comm,
 									layer_2_comm,
 									load_retiree = 0,
-									jobfs_path = job_path)
+									jobfs_path = job_path, verbose = False)
 
 	layer_1_comm.Barrier()
 
@@ -195,9 +229,9 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 			#p.join() 
 			gen_panel_ts(gender,og,U, TSN,job_path)
 			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'\
-												.format(og.mod_name +'/'+ og.ID + '_acc_0'))
+							.format(og.mod_name +'/'+ og.ID + '_acc_0'))
 			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'\
-												.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
+							.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
 			#del p
 			gc.collect()
 	else:
@@ -228,8 +262,10 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 				 = deviation_d[np.where(np.abs(moments_data_nonan)<1)]
 		
 		N_err = len(deviation_r)
-		deviation_r[moments_sim_nonan == 0] = 1e50
-		deviation_r[np.where(np.isnan(moments_sim_nonan))] = 1e50
+		deviation_r[moments_sim_nonan == 0] = 1E50
+		deviation_r[moments_sim_nonan == 1] = 1E50
+		deviation_r[np.where(np.isnan(moments_sim_nonan))] = 1E50
+
 
 		return 1-np.sqrt((1/N_err)*np.sum(np.square(deviation_r)))
 	# Return none if not layer 1 master 
@@ -253,22 +289,24 @@ def load_tm1_iter(model_name, scr_path):
 	return gamma_XEM, S_star,t, sampmom
 
 def iter_SMM(eggbasket_config, 
-			 model_name,
-			 gender,
-			 param_random_bounds, 
-			 sampmom, 	   # t-1 parameter means 
-			 moments_data, # data moments 
-			 world_comm,
-			 layer_1_comm, # layer 1 communicator 
-			 layer_2_comm, # layer 2 communicator 
-			 node_world, 
-			 cross_node_world,
-			 cross_layer1_world, 
-			 TSN,
-			 U, 		# fixed and stored model errors 
-			 gamma_XEM, # lower elite performer
-			 S_star, 	# upper elite performer
-			 t, job_path, scr_path, reset_draws): 		# iteration number 
+							 model_name,
+							 gender,
+							 param_random_bounds, 
+							 sampmom, 	   # t-1 parameter means 
+							 moments_data, # data moments 
+							 world_comm,
+							 layer_1_comm, # layer 1 communicator 
+							 layer_2_comm, # layer 2 communicator 
+							 node_world, 
+							 cross_node_world,
+							 cross_layer1_world, 
+							 TSN,
+							 U, 		# fixed and stored model errors 
+							 gamma_XEM, # lower elite performer
+							 S_star, 	# upper elite performer
+							 t, job_path,
+							 scr_path,
+							 reset_draws): 		# iteration number 
 	
 	""" Initializes parameters and LifeCycel model and peforms 
 		one iteration of the SMM, returning updated sampling distribution
@@ -328,9 +366,9 @@ def iter_SMM(eggbasket_config,
 
 	if layer_1_comm.rank == 0:
 		Path(scr_path + "/" + model_name + "/errs/")\
-					.mkdir(parents=True, exist_ok=True)
+					.mkdir(parents = True, exist_ok = True)
 		Path(scr_path + "/" + model_name + "/params/")\
-					.mkdir(parents=True, exist_ok=True)
+					.mkdir(parents = True, exist_ok = True)
 		pickle.dump(errors_ind, open(scr_path + "/" + model_name\
 					 + "/errs/{}_errors.pkl".format(LS_models.param_id), "wb"))
 		pickle.dump(parameters, open(scr_path + "/" + model_name\
@@ -340,21 +378,26 @@ def iter_SMM(eggbasket_config,
 	# Only layer 1 rank 0 values are not None
 	layer_1_comm.Barrier()
 
-	if t == 0 and reset_draws == 'True':
-		del LS_models
-		gc.collect()
-		world_comm.Barrier()
-	else:
-		del LS_models
-		gc.collect()
+	#if t == 0 and reset_draws == 'True':
+	#	del LS_models
+	#	gc.collect()
+	#	world_comm.Barrier()
+	#else:
+	del LS_models
+	gc.collect()
 
 	if node_world.rank == 0:
+		len_dir = 0
+		
+		while len_dir < N_elite + 5:
 
-		dir_err = os.listdir(scr_path + "/" + model_name + "/errs/")
-		dir_params = os.listdir(scr_path + "/" + model_name + "/params/")
-		indexed_errors = []
-		parameter_list = []
-		time.sleep(5)
+			dir_err = os.listdir(scr_path + "/" + model_name + "/errs/")
+			time.sleep(5)
+			dir_params = os.listdir(scr_path + "/" + model_name + "/params/")
+			indexed_errors = []
+			parameter_list = []
+			time.sleep(5)
+			len_dir = len(dir_err)
 
 		for file in dir_err:
 			errors = pickle.load(open(scr_path + "/" + model_name\
@@ -375,9 +418,9 @@ def iter_SMM(eggbasket_config,
 		errors_arr = np.array(indexed_errors[:,1]).astype(np.float64)
 
 		error_indices_sorted = np.take(indexed_errors[:,0],\
-																	 np.argsort(-errors_arr))
+											np.argsort(-errors_arr))
 		errors_arr_sorted = np.take(errors_arr,\
-																	 np.argsort(-errors_arr))
+											np.argsort(-errors_arr))
 		
 		number_N = len(error_indices_sorted)
 		
@@ -396,9 +439,9 @@ def iter_SMM(eggbasket_config,
 						- S_star[int(d +t -1)]
 
 		means, cov = gen_param_moments(elite_errors,sampmom,\
-																		parameter_list_dict,\
-																		param_random_bounds,\
-																		elite_indices, weights,t)
+										parameter_list_dict,\
+										param_random_bounds,\
+										elite_indices, weights,t)
 		
 		if world.rank == 0:
 			print("...generated and saved sampling moments")
@@ -419,13 +462,14 @@ def iter_SMM(eggbasket_config,
 
 
 def gen_param_moments(elite_errors,\
-											sampmom,\
-											parameter_list_dict,
-											param_random_bounds,
-											selected,
-											weights,
-											t,
-											rho_smooth= .2):
+						sampmom,\
+						parameter_list_dict,
+						param_random_bounds,
+						selected,
+						weights,
+						t,
+						rho_smooth = .2,
+						rho_gd = 0.1):
 
 	""" Estiamate params of a sampling distribution
 
@@ -468,10 +512,10 @@ def gen_param_moments(elite_errors,\
 	means = np.average(sample_params, weights = weights, axis=0)
 	cov = np.cov(sample_params, aweights = weights, rowvar=0)
 
-	grad_new_params_1 = means + coeffs*1e-1
+	grad_new_params_1 = means + coeffs
 	grad_new_params = np.clip(grad_new_params_1,\
-														 random_param_bounds_ar[:, 1],\
-														 random_param_bounds_ar[:, 0])
+							 random_param_bounds_ar[:, 1],\
+							 random_param_bounds_ar[:, 0])
 
 	if t>0:
 
@@ -481,7 +525,7 @@ def gen_param_moments(elite_errors,\
 
 		pass 
 
-	means = .9 * means + .1* grad_new_params
+	means = (1-rho_gd) * means + rho_gd* grad_new_params
 
 	return means, cov
 
@@ -501,8 +545,8 @@ if __name__ == "__main__":
 
 	# Estimation parameters  
 	tol = 1E-1
-	TSN = 125
-	N_elite = 30
+	TSN = 250
+	N_elite = 35
 	d = 3
 	number_N = None
 	error = 1
@@ -511,6 +555,7 @@ if __name__ == "__main__":
 	gender = sys.argv[1]
 	model_name = sys.argv[2]
 	reset_draws = sys.argv[3]
+	reset_init = sys.argv[4]
 
 	settings_folder = 'settings'
 	job_path = get_jobfs_path()
@@ -520,6 +565,7 @@ if __name__ == "__main__":
 	# If starting a fresh estimation, clear scratch directories 
 	if reset_draws == 'True' and world.rank == 0:
 		print("Clearing folders...")
+		
 		shutil.rmtree(scr_path + "/" + model_name + "/errs/",\
 						 ignore_errors = True)
 		shutil.rmtree(scr_path + "/" + model_name + "/params/",\
@@ -529,6 +575,9 @@ if __name__ == "__main__":
 					.mkdir(parents = True, exist_ok = True)
 		Path(scr_path + "/" + model_name + "/params/")\
 					.mkdir(parents = True, exist_ok = True)
+		
+		if reset_init == 'True':
+			reset_smm(model_name, scr_path)
 		
 	world.Barrier()
 	gamma_XEM, S_star,t, sampmom = load_tm1_iter(model_name,scr_path)
@@ -540,11 +589,16 @@ if __name__ == "__main__":
 	# Create communicators 
 	layer_1_comm, layer_2_comm, layer_ts_comm, node_world, cross_node_world,\
 	cross_layer1_world = gen_communicators(world,
-													block_size_layer_1,
-													block_size_layer_2,
-													block_size_layer_ts)
+											block_size_layer_1,
+											block_size_layer_2,
+											block_size_layer_ts)
 
-	eggbasket_config, param_random_bounds = read_settings(settings_folder)
+	eggbasket_config, param_random_bounds,\
+		 param_random_bounds_big = read_settings(settings_folder)
+
+	if gender == 'male_big' or gender == 'female_big':
+		param_random_bounds = param_random_bounds_big
+
 
 	world.Barrier()
 
