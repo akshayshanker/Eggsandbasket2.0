@@ -220,7 +220,7 @@ def interp_as(xp,yp,x, extrap = False):
 		for i in range(len(x)):
 			if x[i]< xp[0]:
 				if (xp[1]-xp[0])!=0:
-					evals[i]= yp[0]+(x[i]-xp[0])*(yp[1]-yp[0])\
+					evals[i]= yp[0] + (x[i]-xp[0])*(yp[1]-yp[0])\
 						/(xp[1]-xp[0])
 				else:
 					evals[i] = yp[0]
@@ -603,3 +603,17 @@ def gen_reshape_funcs(og):
 				reshape_adj_RHS, reshape_RHS_Vfunc_rev,reshape_RHS_UFB,\
 				reshape_vfunc_points, _rehape_adj_post_interp
 
+if __name__ == "__main__":
+	
+	import matplotlib.pyplot as plt
+ 
+	x = np.linspace(.5,1, 1000)
+
+	y = np.sin(x)
+
+	x_hat = np.linspace(0,1.5, 1000)
+
+	y_hat = interp_as(x,y,x_hat, extrap= True)
+
+	plt.plot(x_hat, y_hat)
+	plt.savefig('test.png')

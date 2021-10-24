@@ -130,7 +130,7 @@ if __name__ == "__main__":
 	
 
 	# Read settings
-	eggbasket_config, param_random_bounds = read_settings(settings_path)
+	eggbasket_config, param_random_bounds, param_random_bounds_big = read_settings(settings_path)
 
 	gender = sys.argv[1]
 	#gender = 'male'
@@ -138,18 +138,19 @@ if __name__ == "__main__":
 	if gender == 'male':
 	# Solve male baseline (Initial submit version may 12,2021)
 	# Note '9GLB6E_20210501-181303_baseline_male' is used as male baseline ID
-		model_name = 'baseline_male_v9'
+		model_name = 'baseline_male_v12'
 		params = eggbasket_config['male']
-		top_id = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v9/topid.smms","rb"))
-		params = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v9/params/{}_params.pkl".format(top_id),"rb"))
+		top_id = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v12/topid.smms","rb"))
+		params = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v12/params/{}_params.pkl".format(top_id),"rb"))
 		param_dict = eggbasket_config['male']
 		param_dict['parameters'] = params
 		#sampmom = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male/latest_sampmom.smms".format(model_name),"rb"))
 		sampmom = [0,0]
-
 		#param_dict['rho'] = 0.05
-		#param_dict['grid_size_H'] = 20
-		#param_dict['gamma'] = 4
+		param_dict['parameters']['A_max_W'] = 20
+		param_dict['parameters']['grid_size_H'] = 30
+		param_dict['parameters']['beta_hat'] = .96
+		param_dict['parameters']['gamma'] = - 4
 		#shutil.rmtree(job_path+'/{}/'.format(model_name))
 		
 	# Solve female baseline
@@ -244,7 +245,6 @@ if __name__ == "__main__":
 												 moments_female)
 
 			os.chdir(os.path.expanduser("~/Eggsandbasket2.0/eggsandbaskets/plots")) 
-			moments_sim_sorted.to_csv("moments_sorted_test.csv")
 
 			moments_data = pd.read_csv('{}/moments_data_plot.csv'\
 							.format(home_path + settings_path))
@@ -277,7 +277,6 @@ if __name__ == "__main__":
 			moments_sim_sorted = sortmoments(moments_male,\
 												 moments_female)
 			os.chdir(os.path.expanduser("~/Eggsandbasket2.0/eggsandbaskets/plots")) 
-			moments_sim_sorted.to_csv("moments_sorted_test.csv")
 
 
 

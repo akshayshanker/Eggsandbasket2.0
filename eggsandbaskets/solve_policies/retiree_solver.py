@@ -1316,7 +1316,8 @@ def retiree_func_factory(og):
 							points,
 							xto.NEAREST)
 
-		return c_prime_noadj_val, H_prime_noadj_val, mort_db_prime_noadj, vf_val, uh_prime_val
+		return c_prime_noadj_val, H_prime_noadj_val,\
+				 mort_db_prime_noadj, vf_val, uh_prime_val
 
 	@njit
 	def gen_rhs_val_rent(t, points,
@@ -1396,9 +1397,9 @@ def retiree_func_factory(og):
 
 		"""
 
-		#@njit
 		def my_gen_RHS_TR(my_X_all_hat_ind, DB_payout):
 			"""
+			Generates RHS retiree Euler for each of the (my) worker grid points. 
 			Loop over states, where each i indexes a cartesian product of:
 
 			0 - DB/DC
@@ -1416,6 +1417,7 @@ def retiree_func_factory(og):
 
 			"""
 
+			# Make empty arrays to fill with RHS Euler values 
 			my_UC_prime_out = np.zeros(len(my_X_all_hat_ind))
 			my_UC_prime_H_out = np.zeros(len(my_X_all_hat_ind))
 			my_UC_prime_M_out = np.zeros(len(my_X_all_hat_ind))
@@ -1424,6 +1426,11 @@ def retiree_func_factory(og):
 
 			@njit 
 			def _my_gen_RHS_TR_point(i):
+				""" Function generates RHS for grid point 
+					i by looping over next period wage shocks
+					and summing over markov probs"""
+
+				# Pull out the i state values 	
 				q_in = Q[my_X_all_hat_ind[i][8]]
 				H_in = H[my_X_all_hat_ind[i][7]]
 				q_ind = my_X_all_hat_ind[i][8]
@@ -1436,52 +1443,57 @@ def retiree_func_factory(og):
 				# house price shocks, DC values after returns
 				# mortgage interest shocks and mortgage balances
 				# after interest.
-
 				Q_prime = q_in * (1 + r_H + Q_DC_shocks[:, 2])
-
 				A_DC_prime = ((1 - r_share) * Q_DC_shocks[:, 0]
 							  + r_share * Q_DC_shocks[:, 1]) * ADC_in
-
 				q_t_arr = np.full(len(Q_DC_shocks[:, 2]), q_in)
 
 				# t+1 leverage wrt. to t+1 house price after t+1 interest
-				M_prime = r_m_prime*m_in*Q_prime/(1-delta_housing) * q_t_arr 
+				M_prime = r_m_prime*m_in*q_t_arr/(1-delta_housing) * Q_prime 
 				M_prime_R = r_m_prime 
+
+				UC_prime = np.zeros(len(M_prime)) 
+				UC_prime_H = np.zeros(len(M_prime)) 								  
+				UC_prime_M = np.zeros(len(M_prime)) 
+				VF_cont = np.zeros(len(M_prime)) 
 				
 				# For each T_R-1 period exogenous state,
-				# loop over R period wage stock realisation. 
+				# loop over R period wage stock realisation and sum 
 				for j in range(len(E)):
 
-					a_l_exDC = DB_payout[j] * (1-0.15)\
+					# liquid wealth before DC pay out
+					# but including DB pay out
+					a_l_exDC = DB_payout[j]\
 						* (1 - acc_ind)\
 						+ (1 + r) * A[my_X_all_hat_ind[i][5]]
 
-					a_l = A_DC_prime * (1-0.15) + a_l_exDC
+					# Add DC pay-out to wealth 
+					a_l = A_DC_prime + a_l_exDC
 
 					# Wealth net of mortgage liability for adjusters
 					wealth = a_l + Q_prime * H_in * \
 						(1 - delta_housing) * (1 - M_prime)
 
-
-					wealth[wealth <= 0] = 0
-
 					#A_prime is bequethed wealth if agent dies at the beggining 
 					# of period.
 					A_prime = wealth
-					A_prime[A_prime <= 0] = 1E-100
+					A_prime[A_prime <= 0] = A_min
 
+					# Turn housing at beggining of R period into array
 					h_prime_arr = np.full(len(Q_prime),
 										  (1 - delta_housing) * H_in)
 
 					# State points of length housing price shock x DC shock
 					# interpolation policy functions over these points.
-
-					point_noadj = np.column_stack((a_l, h_prime_arr, Q_prime, M_prime))
+					point_noadj = np.column_stack((a_l, h_prime_arr,\
+													 Q_prime, M_prime))
 					points_adj = np.column_stack((Q_prime, wealth))
 					points_rent = np.column_stack((Q_prime, wealth))
 
+					# Generate the policy functions for adjuster,
+					# non-adjuster and renter 
 					c_prime_val_noadj, H_prime_val_noadj,\
-						mort_db_prime_noadj, vf_val_noadj, uh_db_prime=\
+						mort_db_prime_noadj, vf_val_noadj, uh_db_prime =\
 						gen_rhs_val_noadj(t, point_noadj,
 										  a_prime_noadj,
 										  c_prime_noadj,
@@ -1499,8 +1511,9 @@ def retiree_func_factory(og):
 						gen_rhs_val_rent(t, points_rent,
 										 h_prime_rent)
 
-					val_noadj = u_vec(c_prime_val_noadj, H_prime_val_noadj, alpha_housing)\
-								+ beta_bar * vf_val_noadj
+					# Now the value functions at R
+					val_noadj = u_vec(c_prime_val_noadj, H_prime_val_noadj,\
+									 alpha_housing) + beta_bar * vf_val_noadj
 					val_adj = u_vec(c_prime_val_adj, H_prime_val_adj, alpha_housing)\
 								+ beta_bar * vf_val_adj
 					eta_ind = val_noadj > val_adj
@@ -1516,21 +1529,14 @@ def retiree_func_factory(og):
 					mort_db_prime = eta_ind * mort_db_prime_noadj\
 						+ (1 - eta_ind) * mort_dp_prime_adj
 
-					uc_prime_norent = uc_vec(c_prime_val,
-										 H_prime_val,
-										 alpha_housing)
+					# Non-renter marginal utilities 
+					uc_prime_norent = uc_vec(c_prime_val, H_prime_val,
+										 	alpha_housing)
 
-					u_norent = u_vec(c_prime_val,
-								 H_prime_val,
-								 alpha_housing)
+					u_norent = u_vec(c_prime_val, H_prime_val,
+								 			alpha_housing)
 
-					state_dp_prime_norent = np.column_stack((a_prime_val,
-															 H_prime_val,
-															 Q_prime,
-															 mort_db_prime))
-
-
-					# Policies with renting.
+					# Policies with renting
 					uc_prime_rent = uc_vec(c_prime_val_rent,
 									   h_prime_val_rent,
 									   alpha_housing)
@@ -1557,11 +1563,8 @@ def retiree_func_factory(og):
 					# Index to rent or not.
 					rent_ind = val_rent > val_norent
 
-					VF_db_prime = val_rent*rent_ind + val_norent*(1-rent_ind)
-
 					# Combine R period marginal utilities and value function 
 					# across renters and non-renters
-
 					uc_prime = rent_ind * uc_prime_rent \
 						+ (1 - rent_ind) * uc_prime_norent
 					val = rent_ind * val_rent \
@@ -1575,40 +1578,48 @@ def retiree_func_factory(og):
 					# conditioned on state E_ind in the previous period
 					# *note we sum over the j wage shock probs in the loop over len(Q_DC_P)*
 
-					UC_prime = P_E[E_ind][j] * (1 + r) * (s[int(R - 1)] * uc_prime \
-									+ (1 - s[int(R - 1)]) * b_prime(A_prime))
+					UC_prime =+ P_E[E_ind][j]\
+								 * ((1 + r) * (s[int(R - 1)] * uc_prime \
+									+ (1 - s[int(R - 1)]) * b_prime(A_prime)))
+
+					UC_prime_H_noadj = beta_bar * (1 - delta_housing) * uh_db_prime
+					UC_prime_H_adj_rent = Q_prime * (1 - delta_housing) * uc_prime
+					index_adj_or_rent = (1-eta_ind) * (1-rent_ind) + rent_ind
+					index_no_adj_and_norent = eta_ind * (1-rent_ind)
+					m_beq_h_all  = Q_prime * (1 - delta_housing) * b_prime(A_prime)
 					
-					UC_prime_H = P_E[E_ind][j] * s[int(R - 1)]*(\
-									((1-eta_ind)*(1-rent_ind) + rent_ind) * Q_prime * (1 - delta_housing) * uc_prime\
-									+ eta_ind*(1-rent_ind) * beta_bar * (1 - delta_housing) * uh_db_prime)\
-									+ P_E[E_ind][j] * (1 - s[int(R - 1)]) * b_prime(A_prime)
-									   
+					UC_prime_H =+ P_E[E_ind][j] * (s[int(R - 1)]*(\
+										(index_adj_or_rent * UC_prime_H_adj_rent \
+											+ index_no_adj_and_norent * UC_prime_H_noadj))\
+											+ (1 - s[int(R - 1)])*m_beq_h_all)
 
-					UC_prime_M = P_E[E_ind][j] * M_prime_R * s[int(R - 1)] * uc_prime\
-											 + (1 - s[int(R - 1)]) * b_prime(A_prime)*M_prime_R # check the bequest here, interest is not being charged 
+					UC_prime_M =+ P_E[E_ind][j] * M_prime_R * (s[int(R - 1)] * uc_prime\
+											 + (1 - s[int(R - 1)]) * b_prime(A_prime)) # check the bequest here, interest is not being charged 
 
-					Lambda = ((1 - r_share) * Q_DC_shocks[:, 0]
-							  + r_share * Q_DC_shocks[:, 1]) *(UC_prime / (1 + r))
+					VF_cont =+ s[int(R - 1)] * P_E[E_ind][j] * val +\
+									P_E[E_ind][j] *(1 - s[int(R - 1)]) * b(A_prime)
 
-					VF_cont = s[int(R - 1)] * P_E[E_ind][j] * val +\
-									(1 - s[int(R - 1)]) * b(A_prime)
+				# No condition over the i.i.d shocks
+				my_UC_prime_out_i = np.dot(Q_DC_P,  UC_prime)
+				my_UC_prime_H_out_i = np.dot(Q_DC_P,  UC_prime_H)
+				my_UC_prime_M_out_i = np.dot(Q_DC_P,  UC_prime_M)
+				my_VF_i = np.dot(Q_DC_P,  VF_cont)
 
-					my_UC_prime_out_i = np.dot(Q_DC_P,  UC_prime)
-					my_UC_prime_H_out_i = np.dot(Q_DC_P,  UC_prime_H)
-					my_UC_prime_M_out_i = np.dot(Q_DC_P,  UC_prime_M)
-					my_VF_i = np.dot(Q_DC_P,  VF_cont)
-
-					return my_UC_prime_out_i, my_UC_prime_H_out_i, my_UC_prime_M_out_i, my_VF_i
+				return my_UC_prime_out_i, my_UC_prime_H_out_i,\
+						 my_UC_prime_M_out_i, my_VF_i
 
 			for i in range(len(my_X_all_hat_ind)):
-				my_UC_prime_out[i], my_UC_prime_H_out[i], my_UC_prime_M_out[i],my_VF[i] = _my_gen_RHS_TR_point(i)
+				my_UC_prime_out[i], my_UC_prime_H_out[i],\
+				my_UC_prime_M_out[i],my_VF[i] = _my_gen_RHS_TR_point(i)
 
 
 			return my_UC_prime_out, my_UC_prime_H_out,\
 					 my_UC_prime_M_out, my_VF
 
 		DB_payout = None 
+		
 		if comm.rank ==0:
+
 			X_all_hat_ind = X_all_hat_ind_func().astype(np.int32)
 			X_all_hat_ind_split = np.array_split(X_all_hat_ind,\
 												 comm.size, axis = 0)
@@ -1631,6 +1642,7 @@ def retiree_func_factory(og):
 										  E)
 
 		else:
+
 			X_all_hat_ind_split = None
 			UC_prime_out = None
 			UC_prime_H_out = None
@@ -1722,7 +1734,8 @@ def retiree_func_factory(og):
 					(a_noadj, c_noadj, a_adj_uniform, c_adj_uniform,
 					 H_adj_uniform, h_prime_rent, UF_prime, UC_prime_H)
 
-				UF_prime, UC_prime, UC_prime_H, UC_prime_M = gen_uf_prime(T, t_prime_funcs)
+				UF_prime, UC_prime, UC_prime_H, UC_prime_M\
+					 = gen_uf_prime(T, t_prime_funcs)
 			else:
 				pass 
 
@@ -1735,8 +1748,8 @@ def retiree_func_factory(og):
 
 		start = time.time()
 		t_prime_funcs = comm.bcast(t_prime_funcs, root = 0)
-		UC_prime_out, UC_prime_H_out, UC_prime_M_out, VF = gen_RHS_TR(comm, 
-			t, *t_prime_funcs)
+		UC_prime_out, UC_prime_H_out, UC_prime_M_out, VF\
+			 = gen_RHS_TR(comm, t, *t_prime_funcs)
 
 		if comm.rank == 0:
 			if noplot == False:

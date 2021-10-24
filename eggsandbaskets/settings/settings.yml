@@ -124,15 +124,15 @@ baseline_lite:
     f_ASF: 1.0
     f_LSF: 0.23
     gamma: 2.98
-    grid_size_A: 20.0
+    grid_size_A: 15.0
     grid_size_C: 15.0
-    grid_size_DC: 9.0
+    grid_size_DC: 10.0
     grid_size_DCR: 2.0
-    grid_size_H: 20.0
+    grid_size_H: 15.0
     grid_size_HS: 15.0
-    grid_size_M: 9.0
-    grid_size_Q: 6.0
-    grid_size_Q_s: 3.0
+    grid_size_M: 5.0
+    grid_size_Q: 5.0
+    grid_size_Q_s: 2.0
     grid_size_W: 3.0
     grid_size_alpha: 1.0
     grid_size_beta: 1.0
@@ -386,23 +386,23 @@ male:
     v_E: 'Employer contribution rate '
     v_S: Standard member  contributions rate
   parameters:
-    A_max_R: 20.0
-    A_max_W: 15.0
-    A_max_WE: 30.0
+    A_max_R: 35.0
+    A_max_W: 20.0
+    A_max_WE: 40.0
     A_max_WW: 20.0
     A_min: 1.0e-05
     A_min_W: 1.0e-05
     C_max: 15.0
-    C_min: 5.0e-08
+    C_min: 1.0e-05
     DC_max: 14.0
     DC_min: .1
     H_max: 16
-    HS_max: 16
+    HS_max: 14
     H_min: 1.0e-05
     ID: 188198904234
     M_max: 1.0
     M_min: 0.0
-    Q_max: 1.75
+    Q_max: 1.35
     Q_min: 0.1
     R: 64.0
     T: 99.0
@@ -417,12 +417,12 @@ male:
     f_ASF: 1.0
     f_LSF: 0.23
     gamma: 3.3
-    grid_size_A: 18.0
+    grid_size_A: 20.0
     grid_size_C: 15.0
     grid_size_DC: 8.0
-    grid_size_DCR: 3.0
-    grid_size_H: 18.0
-    grid_size_HS: 18.0
+    grid_size_DCR: 2.0
+    grid_size_H: 30.0
+    grid_size_HS: 30.0
     grid_size_M: 8.0
     grid_size_Q: 8.0
     grid_size_Q_s: 3.0
@@ -436,11 +436,11 @@ male:
     nu_p_0: -0.9
     nu_p_1: -0.112
     nu_p_2: 0.000875
-    nu_r_0: -0.1
+    nu_r_0: -0.3
     nu_r_1: -0.033
     nu_r_2: 0.0001308
     nu_r_3: 0.109
-    nu_r_4: 2.108
+    nu_r_4: .002108
     nu_v_0: .3
     nu_v_1: 48.531
     nu_v_2: -0.001018
@@ -449,7 +449,7 @@ male:
     phi_r: .041
     phi_d: 0.2
     phi_w: 0.4044149
-    psi: 2
+    psi: -10
     r: 0.025
     r_H: 0.032
     r_h: 0.0476
@@ -472,14 +472,13 @@ male:
     tzero: 16.0
     v_E: 0.17
     v_S: 0.0235
-    nu_a_0: 5.44
-    nu_a_1: 0.2815
-    nu_a_2: 0.002448
+    nu_a_0: 5.445861
+    nu_a_1: 0.2815901
+    nu_a_2: -0.0024488
     nu_a_3: 0.15
   risk_share_points:
     - 0.0
     - 0.7
-    - 0.95
     - 1.0
   survival:
   - 0.995905
@@ -584,9 +583,8 @@ male:
   - 0.00001
   vol_cont_points:
   - 0.0
-  - 0.01077924
-  - 0.03404
-  - 0.1
+  - 0.034
+  - 0.15
   normalisation:
   - 1
   - .00001
@@ -749,7 +747,7 @@ male_big:
     phi_r: .041
     phi_d: 0.2
     phi_w: 0.4044149
-    psi: 2
+    psi: -10
     r: 0.025
     r_H: 0.032
     r_h: 0.0476

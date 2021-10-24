@@ -194,20 +194,20 @@ def lsmodel_function_factory(parameters,
     def adj_p(t_zero):
         """Gives adjustment cost at tzero for plan switching
         """
-        return min(1e300,(np.exp(psi_adj) * np.exp(-500*nu_p_0 + nu_p_1*t_zero + nu_p_2*np.power(t_zero,2))))
+        return min(1e300,(np.exp(psi_adj) * np.exp(nu_p_0 + nu_p_1*t_zero + nu_p_2*np.power(t_zero,2))))
 
     @njit
     def adj_v(t, a):
         """Gives adjustment cost at tzero for voluntary cont switching
         """
-        var_1   = np.log(1000*a)
+        var_1   = np.log(a)
         cost = np.exp(psi_adj) * np.exp(nu_v_0 + nu_v_2*np.power((t - nu_v_1),2) + nu_v_3*var_1)
         cost[cost>=1e300] = 1e300
         return cost
 
     @njit
     def adj_pi(t, a_dc, adj_p):
-        var_1 = np.log(1000*a_dc)
+        var_1 = np.log(a_dc)
         cost = np.exp(psi_adj) * np.exp(nu_r_0 + nu_r_1*t + nu_r_2*np.power(t,2) + nu_r_3*var_1 + nu_r_4*adj_p)
         cost[cost>=1e300] = 1e300
         return cost 

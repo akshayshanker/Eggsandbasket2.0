@@ -3,7 +3,9 @@
 Module estimates HousingModel using Simualted Method of Moments
 Minimisation performed using Cross-Entropy method (see Kroese et al)
 
-Script must be run using Mpi with 24 * number of simulation cores.
+Script must be run using Mpi with cpus = 24 * number
+of cross entropy draws. (Number of cores per draw: communicator topolgoy)
+
 
 Example (on Gadi normal compute node):
 
@@ -16,7 +18,6 @@ mpiexec -n 480 python3 -m mpi4py smm.py
 """
 
 # Import packages
-
 import yaml
 import gc
 import numpy as np
@@ -123,12 +124,12 @@ def gen_communicators(big_world,
 	# Each rank in this communicator belongs to a distinct layer 1 communicator 
 
 	cross_layer1_world = node_world\
-												.Split(int(layer_1_rank),node_world.Get_rank())
+				.Split(int(layer_1_rank),node_world.Get_rank())
 
 	return layer_1_comm, layer_2_comm, layer_ts_comm, node_world,\
 			cross_node_world, cross_layer1_world
 
-def gen_format_moments(TS1,TS2, moments_data, gender):
+def gen_format_moments(TS1,TS2, moments_data, moments_weights, gender):
 	"""Gen simulated moments, labels
 		and sorts simulated and data mooments
 		and generates numpy arrays"""
@@ -139,6 +140,9 @@ def gen_format_moments(TS1,TS2, moments_data, gender):
 	moments_male = moments_male.add_suffix('_male')
 	moments_sim_sorted = sortmoments(moments_male,\
 										 moments_female)
+
+	#plot_moments_ts(moments_male,moments_female, moments_data, home_path, model_name)
+
 	moments_sim_sorted = pd.concat([moments_male["Age_wave10_male"]\
 								.reset_index().iloc[:,1],\
 								moments_sim_sorted],\
@@ -147,6 +151,9 @@ def gen_format_moments(TS1,TS2, moments_data, gender):
 							 {'Age_wave10_male':'Age_wave10'})
 
 	moments_data.columns = moments_sim_sorted.columns
+
+
+	moments_weights.columns = moments_sim_sorted.columns
 	
 	moments_sim_sorted = moments_sim_sorted\
 				.loc[:,moments_sim_sorted.columns.str.endswith('_'+gender)] 
@@ -157,14 +164,17 @@ def gen_format_moments(TS1,TS2, moments_data, gender):
 
 	moments_data = moments_data.loc[:,moments_data.columns.str\
 									.endswith('_'+gender)] 
+	moments_weights = moments_weights.loc[:,moments_weights.columns.str\
+									.endswith('_'+gender)] 
 
 	moments_data_array = np.array(np.ravel(moments_data))
+	moments_weights_array = np.array(np.ravel(moments_weights))
 
-	return moments_sim_array, moments_data_array
+	return moments_sim_array, moments_data_array, moments_weights_array
 
-def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
+def gen_RMS(t, LS_models, gender, moments_data, moments_weights, world_comm, layer_1_comm,\
 				layer_2_comm,node_world, cross_node_world, \
-				cross_layer1_world, TSN,U, job_path):
+				cross_layer1_world, TSN,U, job_path, scr_path):
 	"""
 	Simulate model for param vector and generate root mean square error 
 	between simulated moments for HousingModel 
@@ -208,9 +218,9 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 			#p.join() 
 			gen_panel_ts(gender,og,U, TSN,job_path)
 			TSALL_10_df = pd.read_pickle(job_path + '/{}/TSALL_10_df.pkl'\
-											.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
+								.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
 			TSALL_14_df	= pd.read_pickle(job_path + '/{}/TSALL_14_df.pkl'\
-											.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
+								.format(og.mod_name +'/'+ og.ID + '_acc_0')) 
 			#del p
 			gc.collect()
 
@@ -241,9 +251,11 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 
 		# We  use the LifeCycle model instance on layer 1 master
 		# to generate the TS since it contains the parameter ID (og.ID)
+		#plot_path = scr_path + '/' + og.mod_name +'/'+ og.ID + '/'
 
-		moments_sim_array, moments_data_array \
-		= gen_format_moments(TSALL_10_df, TSALL_14_df, moments_data, gender)
+		moments_sim_array, moments_data_array, moments_weights_array \
+		= gen_format_moments(TSALL_10_df, TSALL_14_df, moments_data, moments_weights, gender)
+
 
 		del TSALL_10_df
 		del TSALL_14_df 
@@ -251,10 +263,10 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 
 		moments_data_nonan \
 					= moments_data_array[np.where(~np.isnan(moments_data_array))]
+		moments_weights_nonan = moments_weights_array[np.where(~np.isnan(moments_data_array))]
 		moments_sim_nonan \
 					= moments_sim_array[np.where(~np.isnan(moments_data_array))]
 		demon_mom = np.abs(moments_data_nonan)
-		#demon_mom[np.where(demon_mom<.05)] = .05
 		deviation_r = np.abs((moments_sim_nonan - moments_data_nonan)/demon_mom)
 		deviation_d = np.abs(moments_data_nonan-moments_sim_nonan)
 
@@ -262,13 +274,14 @@ def gen_RMS(t, LS_models, gender, moments_data, world_comm, layer_1_comm,\
 				 = deviation_d[np.where(np.abs(moments_data_nonan)<1)]
 		
 		N_err = len(deviation_r)
+		deviation_r = deviation_r
 		deviation_r[moments_sim_nonan == 0] = 1E50
 		deviation_r[moments_sim_nonan == 1] = 1E50
 		deviation_r[np.where(np.isnan(moments_sim_nonan))] = 1E50
+		
 
+		return 1-(1/N_err)*np.sqrt(np.sum(np.square(deviation_r)))
 
-		return 1-np.sqrt((1/N_err)*np.sum(np.square(deviation_r)))
-	# Return none if not layer 1 master 
 	else:
 		return None
 
@@ -294,6 +307,7 @@ def iter_SMM(eggbasket_config,
 							 param_random_bounds, 
 							 sampmom, 	   # t-1 parameter means 
 							 moments_data, # data moments 
+							 moments_weights,
 							 world_comm,
 							 layer_1_comm, # layer 1 communicator 
 							 layer_2_comm, # layer 2 communicator 
@@ -349,6 +363,7 @@ def iter_SMM(eggbasket_config,
 
 		RMS =  gen_RMS(t, LS_models, gender, 
 						moments_data,\
+						moments_weights, 
 						world_comm,
 						layer_1_comm,
 						layer_2_comm,\
@@ -356,7 +371,7 @@ def iter_SMM(eggbasket_config,
 						cross_node_world,\
 						cross_layer1_world,\
 						TSN,\
-						U, job_path)
+						U, job_path, scr_path)
 		if layer_1_comm.rank == 0:
 			return [LS_models.param_id, np.float64(RMS)]
 		else: 
@@ -378,11 +393,6 @@ def iter_SMM(eggbasket_config,
 	# Only layer 1 rank 0 values are not None
 	layer_1_comm.Barrier()
 
-	#if t == 0 and reset_draws == 'True':
-	#	del LS_models
-	#	gc.collect()
-	#	world_comm.Barrier()
-	#else:
 	del LS_models
 	gc.collect()
 
@@ -468,10 +478,10 @@ def gen_param_moments(elite_errors,\
 						selected,
 						weights,
 						t,
-						rho_smooth = .2,
-						rho_gd = 0.1):
+						rho_smooth = 0,
+						rho_gd = 0):
 
-	""" Estiamate params of a sampling distribution
+	""" Estimate params of a sampling distribution
 
 	Parameters
 	----------
@@ -501,7 +511,7 @@ def gen_param_moments(elite_errors,\
 
 	# Get list of bounds
 	random_param_bounds_ar = np.array([(bdns) for key, bdns \
-																in param_random_bounds.items()] ) 
+										in param_random_bounds.items()] ) 
 
 	# Evaluate gradients
 	sample_params_reg = np.array(sample_params)
@@ -509,8 +519,8 @@ def gen_param_moments(elite_errors,\
 	coeffs = reg.coef_
 
 	sample_params = np.array(sample_params)
-	means = np.average(sample_params, weights = weights, axis=0)
-	cov = np.cov(sample_params, aweights = weights, rowvar=0)
+	means = np.average(sample_params, axis=0)
+	cov = np.cov(sample_params, rowvar=0)
 
 	grad_new_params_1 = means + coeffs
 	grad_new_params = np.clip(grad_new_params_1,\
@@ -606,11 +616,15 @@ if __name__ == "__main__":
 	if layer_1_comm.rank == 0:
 		moments_data = pd.read_csv('{}/moments_data.csv'\
 							.format(settings_folder))
+		moments_weights = pd.read_csv('{}/moments_weights.csv'\
+							.format(settings_folder))
+		
 		U = pickle.load(open(scr_path + "/{}/seed_U.smms"\
 					.format(model_name),"rb"))
 	else:
 		moments_data = None
 		U = None
+		moments_weights = None
 
 	# Iterate on cross-entropy loop 
 	while t< 50 and error > tol:
@@ -622,6 +636,7 @@ if __name__ == "__main__":
 								 param_random_bounds,
 								 sampmom,
 								 moments_data,
+								 moments_weights,
 								 world, 
 								 layer_1_comm,
 								 layer_2_comm,
@@ -661,7 +676,8 @@ if __name__ == "__main__":
 			pickle.dump(top_ID, open(scr_path + "/{}/topid.smms"\
 						.format(model_name),"wb"))
 			
-			print("Iteration no. {} in {} min. on {} samples, elite gamma error: {} and elite S error: {}"\
+			print("Iteration no. {} in {} min. on {} samples,\
+						 elite gamma error: {} and elite S error: {}"\
 						.format(t, (time.time()-start)/60,\
 								 number_N, error_gamma, error_S))
 			print("....cov error: {}."\

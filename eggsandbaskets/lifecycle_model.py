@@ -132,8 +132,8 @@ class LifeCycleModel:
 						self.T = int(self.T)
 						# overide pre-set welath and mortgage max
 						#self.M_max = self.H_max*self.Q_max*(1-self.phi_c)
-						self.A_max_WW = self.H_max + self.A_max_W
-						self.A_max_WE = self.H_max + self.A_max_R
+						self.A_max_WW = self.H_max*(1-self.phi_c) + self.A_max_W
+						self.A_max_WE = self.H_max*(1-self.phi_c) + self.A_max_R
 
 
 						# set grid sizes as int
@@ -149,7 +149,7 @@ class LifeCycleModel:
 						self.grid_size_DCR = int(parameters['grid_size_DCR'])
 						self.grid_size_DC = int(parameters['grid_size_DC'])
 						self.grid_size_W = int(parameters['grid_size_W'])
-						self.grid_size_HS = int(parameters['grid_size_HS'])
+						self.grid_size_HS = int(parameters['grid_size_H'])
 
 		class ModelFunctions:
 
@@ -244,8 +244,8 @@ class LifeCycleModel:
 																 param.grid_size_Q)
 						self.M = np.linspace(param.M_min, param.M_max,
 																 param.grid_size_M)
-						self.H_R = np.linspace(param.H_min, param.HS_max,
-																	 int(param.grid_size_HS))
+						self.H_R = np.linspace(param.H_min, param.H_max,
+																	 int(param.grid_size_H))
 
 						self.DB = acc_ind
 						self.V = np.array(config['vol_cont_points'])
@@ -437,6 +437,7 @@ class LifeCycleModel:
 															n=int(parameters['grid_size_DCR']))
 						X_m, P_m = self.lnmort_shocks.state_values, self.lnmort_shocks.P[0]
 						self.X_m = np.exp(parameters['r_m'] + X_m)
+						self.P_m = P_m
 
 		class ModelCartGrids:
 
@@ -489,11 +490,11 @@ class LifeCycleModel:
 						self.Q_DC_shocks = cartesian([stgrd.X_rl, stgrd.X_rh, stgrd.Q_shocks_r,stgrd.X_m])
 
 						P_tmp2 = cartesian([stgrd.P_rl, stgrd.P_rh,
-																stgrd.Q_shocks_P,stgrd.X_m])
+																stgrd.Q_shocks_P,stgrd.P_m])
 						self.Q_DC_P = np.zeros(len(self.Q_DC_shocks))
 
 						for i in range(len(self.Q_DC_P)):
-								self.Q_DC_P[i] = P_tmp2[i][0]*P_tmp2[i][1]*P_tmp2[i][2]
+								self.Q_DC_P[i] = P_tmp2[i][0]*P_tmp2[i][1]*P_tmp2[i][2]*P_tmp2[i][3]
 
 						self.EBA_P = np.zeros((int(param.grid_size_W),
 																	 int(param.grid_size_alpha),
@@ -504,7 +505,7 @@ class LifeCycleModel:
 						sizeEBA = int(param.grid_size_W
 													* param.grid_size_alpha
 													* param.grid_size_beta)
-						self.EBA_P2 = self.EBA_P.reshape((sizeEBA, sizeEBA))
+						
 
 						for j in cartesian([np.arange(len(stochgrids.E)),
 																np.arange(len(stochgrids.alpha_hat)),
@@ -520,6 +521,8 @@ class LifeCycleModel:
 						self.EBA_shocks = cartesian([stochgrids.E,
 																				 stochgrids.alpha_hat,
 																				 stochgrids.Q_shocks_r])
+
+						self.EBA_P2 = self.EBA_P.reshape((sizeEBA, sizeEBA))
 
 						# Make the mortgage rate shocks 
 						# Standard deviation of ln_rm
@@ -617,7 +620,7 @@ class LifeCycleModel:
 														 np.arange(len(stochgrids.beta_hat)),
 														 np.arange(len(grid1d.Pi)),
 														 np.arange(param.grid_size_DC),
-														 np.arange(param.grid_size_HS),
+														 np.arange(param.grid_size_H),
 														 np.arange(param.grid_size_Q)])
 						return X_all_B_ind
 

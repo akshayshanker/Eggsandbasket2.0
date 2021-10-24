@@ -72,7 +72,7 @@ def genprofiles_operator(og,
 
 	# Grid parameters
 	DC_max = og.parameters.DC_max
-	C_min, C_max = og.parameters.C_min, 1
+	C_min, C_max = og.parameters.C_min, og.parameters.C_max
 	Q_max, A_min = og.parameters.Q_max, og.parameters.A_min
 	H_min, H_max = og.parameters.H_min, og.parameters.H_max
 	A_max_W = og.parameters.A_max_W
@@ -176,14 +176,16 @@ def genprofiles_operator(og,
 		prob_V_vals = np.empty(len(V))
 		prob_V_vals[:] = eval_linear(X_cont_W,\
 								 prob_v_func,\
-								 points, xto.LINEAR) 
+								 points, xto.NEAREST) 
 
-		prob_V_vals[np.isnan(prob_V_vals)] = 0.01
+		prob_V_vals[np.isnan(prob_V_vals)] = 0
 		
 		prob_V_vals[np.where(prob_V_vals<.01)] =  0.01
-		prob_V_vals[np.where(prob_V_vals>.99)] = .99
+		prob_V_vals[np.where(prob_V_vals>.99)] =  0.99
 
+		#if np.sum(prob_V_vals) > 0:
 		prob_v = prob_V_vals/np.sum(prob_V_vals)
+		
 		prob_v_tilde = np.copy(prob_v)
 
 		# Pick a random draw for the voluntary contribution (index in the vol.cont grid)
@@ -192,14 +194,16 @@ def genprofiles_operator(og,
 		v = V[V_ind]
 		prob_pi_func = policy_prob_pi[Age][0, E_ind,alpha_ind,beta_ind,V_ind,:]
 		prob_pi_vals = np.empty(len(Pi))
-		prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points,  xto.LINEAR) 
+		prob_pi_vals[:] = eval_linear(X_cont_W,prob_pi_func, points,  xto.NEAREST) 
 
-		prob_pi_vals[np.isnan(prob_pi_vals)] = 0.01
+		prob_pi_vals[np.isnan(prob_pi_vals)] = 0
 		prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
 		prob_pi_tilde  = np.copy(prob_Pi)
 
-		prob_pi_vals[np.where(prob_pi_vals<.01)] = .01
-		prob_pi_vals[np.where(prob_pi_vals>.99)] = .99
+		prob_pi_vals[np.where(prob_pi_vals<.01)] = 0.01
+		prob_pi_vals[np.where(prob_pi_vals>.99)] = 0.99
+		
+		#if np.sum(prob_pi_vals)>0:
 		prob_Pi = prob_pi_vals/np.sum(prob_pi_vals)
 
 
@@ -269,7 +273,7 @@ def genprofiles_operator(og,
 			P_h[t+1] = (1+r_H)*P_h[t]  
 
 		# Initialize continuous points 
-		TS_A_int = max(np.exp(nu_a_0 + nu_a_1*tzero - nu_a_2*tzero**2)/1E5,\
+		TS_A_int = max(np.exp(nu_a_0 + nu_a_1*tzero + nu_a_2*tzero**2)/1E5,\
 							 A_min) 
 
 		TS_A = max(np.random.normal(TS_A_int, nu_a_3), A_min)
@@ -289,10 +293,10 @@ def genprofiles_operator(og,
 
 		V_DC = eval_linear(X_cont_W,\
 							vdcfunc,\
-							points_plan_choice, xto.LINEAR)*1E-2
+							points_plan_choice, xto.NEAREST)
 		V_DB = eval_linear(X_cont_W, \
 							vdbfunc, \
-							points_plan_choice, xto.LINEAR)*1E-2
+							points_plan_choice, xto.NEAREST)
 
 		V_DC_scaled = ((V_DC - adj_p(age))/sigma_plan)\
 						 - max(((V_DC - adj_p(age))/sigma_plan),\
@@ -301,8 +305,8 @@ def genprofiles_operator(og,
 						 - max(((V_DC - adj_p(age))/sigma_plan),\
 						 	((V_DB/sigma_plan)))
 
-		Prob_DC = min(.5, max(.13, np.exp(V_DC_scaled)/(np.exp(V_DB_scaled)\
-						+   np.exp(V_DC_scaled ) )))
+		Prob_DC = np.exp(V_DC_scaled)/(np.exp(V_DB_scaled)\
+						+   np.exp(V_DC_scaled ) )
 		dollar_p = 0
 
 		account_ind = np.searchsorted(np.cumsum(np.array([1-Prob_DC,\
@@ -310,6 +314,7 @@ def genprofiles_operator(og,
 															DBshock)
 		wave_data_10 = np.zeros(21)
 		wave_data_14 = np.zeros(21)
+		#print(TS_A)
 
 		if int(account_ind) == int(acc_ind_gen):
 			for t in range(int(tzero), int(length)+1):
@@ -351,6 +356,7 @@ def genprofiles_operator(og,
 					# Calculate wage for agent 
 					TS_wage = y(t,E[E_ind])
 
+
 					# Next period DC assets (before returns)
 					# (recall domain of policy functions from def of eval_policy_W)
 					# DC_prime is DC assets at the end of t, before returns into t+1
@@ -358,7 +364,7 @@ def genprofiles_operator(og,
 					TS_DC_1 = (1+(1-pi)*r_l + pi*r_h)*DC_prime
 
 					# Wealth for renters, non-adjusters and adjusters 
-					wealth_no_adj = TS_A*(1+r) + (1-v -v_S -v_E)*TS_wage 
+					wealth_no_adj = TS_A*(1+r) + (1-v -v_S -v_E)*TS_wage
 					wealth_rent = wealth_no_adj + P_h[t]*h*(1-TS_M)
 					wealth_adj  = wealth_no_adj + P_h[t]*h*(1-TS_M)
 
@@ -370,7 +376,7 @@ def genprofiles_operator(og,
 														Pi_ind,:]
 
 					zeta_val = eval_linear(X_cont_W,zeta_func,\
-											  points_zeta, xto.LINEAR) 
+											  points_zeta, xto.NEAREST) 
 
 					# Take note of the DC value in the points_noadj
 					# Policy functions are defined on the after vol.cont 
@@ -386,7 +392,7 @@ def genprofiles_operator(og,
 														Pi_ind, :]
 					
 					eta_val = eval_linear(X_cont_W,eta_func,\
-										  points_noadj, xto.LINEAR)
+										  points_noadj, xto.NEAREST)
 
 					# Calculate if renter 
 					renter1 = zeta_val > 0 
@@ -400,7 +406,7 @@ def genprofiles_operator(og,
 
 						hs_points = np.array([wealth_rent,DC_prime, q]) 
 						H_services = max(H_min, eval_linear(X_QH_WRTS,\
-										 h_rent_func, hs_points,  xto.LINEAR))
+										 h_rent_func, hs_points,  xto.NEAREST))
 
 						TS_C = min(ch_ser(H_services, alpha_val, phi_r*q), C_max)
 						TS_M_1 = 0
@@ -420,9 +426,9 @@ def genprofiles_operator(og,
 						no_adj_points = np.array([max(A_min,wealth_no_adj),\
 													DC_prime,h,q,TS_M])
 						TS_A_1 = min(max(A_min,eval_linear(X_cont_W,a_noadjust_func,\
-													no_adj_points,  xto.LINEAR)), A_max_W)
+													no_adj_points,  xto.NEAREST)), A_max_W)
 						TS_C = min(max(C_min,eval_linear(X_cont_W,c_noadjust_func,\
-													no_adj_points,  xto.LINEAR)), C_max)
+													no_adj_points,  xto.NEAREST)), C_max)
 						extra_payment = wealth_no_adj - TS_A_1 - TS_C
 
 						total_liability_mort = TS_M*h*q - extra_payment
@@ -452,13 +458,13 @@ def genprofiles_operator(og,
 
 						TS_C = min(max(C_min,eval_linear(X_QH_W_TS,\
 											c_prime_adj_func,\
-											adj_points,  xto.LINEAR)), C_max)
+											adj_points,  xto.NEAREST)), C_max)
 						TS_H_1 = min(max(H_min, eval_linear(X_QH_W_TS,\
 											H_adj_func,\
-											adj_points,  xto.LINEAR)), H_max)
+											adj_points,  xto.NEAREST)), H_max)
 						TS_A_1 = min(max(A_min, eval_linear(X_QH_W_TS,\
 											a_prime_adj_func,\
-											adj_points,  xto.LINEAR)), A_max_W)
+											adj_points,  xto.NEAREST)), A_max_W)
 
 						total_liability_mort = wealth_adj - TS_A_1 - TS_C \
 										- TS_H_1*q*(1+tau_housing)
@@ -474,7 +480,7 @@ def genprofiles_operator(og,
 					# If t not terminal, iterate forward 
 					if t == age:
 						wave_data_10 = np.array([account_ind,age,\
-												TS_A*norm,TS_M*norm, renter1,\
+												TS_A*norm,TS_M, renter1,\
 												TS_H_1*norm, TS_DC*norm,\
 												 TS_C*norm, \
 												TS_wage*norm, TS_V,\
@@ -490,7 +496,7 @@ def genprofiles_operator(og,
 						age_wave_10 = age
 						age14 = age+ wave_length
 						wave_data_14 = np.array([account_ind,age_wave_10,\
-												TS_A*norm,TS_M*norm, renter1,\
+												TS_A*norm,TS_M, renter1,\
 												TS_H_1*norm, TS_DC*norm,\
 												TS_C*norm, \
 												TS_wage*norm, TS_V,\

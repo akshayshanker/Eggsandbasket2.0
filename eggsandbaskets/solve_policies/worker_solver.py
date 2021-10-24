@@ -320,6 +320,8 @@ def worker_solver_factory(og,
         housing stock that goes into evaluating total wealth is adjusted
         for dep.
 
+        Mortgage leverage here is after interest and house repreciation
+
         """
 
         # Make vectors of compulsory and contribution rates and
@@ -330,8 +332,8 @@ def worker_solver_factory(og,
         tau_housing_vec = np.full(len(my_X_all_ind), tau_housing)
         wage = gen_wage_vec(j, my_X_all_ind)
 
-        # Make vector of total contribution rate (as % of wage )
-        total_cont_rate = np.ones(len(my_X_all_ind)) - v - v_Sv - v_Ev
+        # Make vector of 1- total contribution rate (as % of wage )
+        after_total_cont_rate = np.ones(len(my_X_all_ind)) - v - v_Sv - v_Ev
 
         # Pull out vectors of time t
         # account type, mortgage balance leverage, housing stock
@@ -352,7 +354,7 @@ def worker_solver_factory(og,
         # Total liquid wealth (cash in hand) for non-adjuster
         # and adjuster
         my_points_noadj_vec[:, 0] = A[my_X_all_ind[:, 6]] * (1 + r) \
-            + total_cont_rate * wage * (1-0.3)
+            + after_total_cont_rate * wage
 
         my_points_noadj_vec[:, 0][my_points_noadj_vec[:, 0] <= 0] = A_min
 
@@ -366,7 +368,7 @@ def worker_solver_factory(og,
 
         # Total bequest if agent dies before beggining the period
         # (but after returns have been accumulated)
-        my_A_prime = my_points_adj_vec[:, 0] - m_val
+        my_A_prime = my_points_adj_vec[:, 0] 
 
         # Ravel all the points so easier to Gatherv via mpi
         return np.ravel(my_points_noadj_vec),\
@@ -555,7 +557,7 @@ def worker_solver_factory(og,
             risky_share_arr * Q_DC_shocks[:, 1]
 
         A_DC_prime = A_DC_returns * np.full(len(Q_DC_shocks[:, 2]), ADC_in)
-        M_prime = (1 + r_m_prime) * m_in * q_t_arr / \
+        M_prime = r_m_prime * m_in * q_t_arr / \
             ((1 - delta_housing) * Q_prime)
 
         return np.column_stack((A_DC_prime, Q_prime, M_prime))
@@ -737,16 +739,16 @@ def worker_solver_factory(og,
         m_prime_adj_tilde = eval_linear_c(X_cont_AH,
                                           mort_func1D,
                                           np.array([x_prime, h]),
-                                          xto.NEAREST)
+                                          xto.LINEAR)
         m_prime_tilde = max(0, min(m_prime_adj_tilde, max_loan))
 
         # Evaluate RHS (t-1) marginal util of consumption
         uc_prime_adj = max(1e-250, beta * eval_linear_c(X_cont_WAM2,
                                                         UC_prime_func2D,
                                                         np.array([x_prime, h, m_prime_tilde]),
-                                                        xto.NEAREST))
+                                                        xto.LINEAR))
         # Evaluate consumption
-        c_t = max(1E-10, uc_inv(uc_prime_adj, h, alpha_housing))
+        c_t = max(C_min, uc_inv(uc_prime_adj, h, alpha_housing))
 
         # Mutlipler active when mortage
         # constrained by collat. constraint
@@ -759,18 +761,17 @@ def worker_solver_factory(og,
                                                           np.array([x_prime,
                                                                     h,
                                                                     max_loan]),
-                                                          xto.NEAREST))  # check this
+                                                          xto.LINEAR))  # check this
 
             ref_const_FOC = q * (1 - phi_c)\
                 * max(0,(uc_prime_adj - uc_prime_m_maxloan))
 
         # Evaluate of RHS (t+1) of housing marginal shadow value
         UC_prime_H_RHS = beta * eval_linear_c(X_cont_WAM2, UC_prime_H_func2D, np.array([
-                                              x_prime, h, m_prime_tilde]), xto.NEAREST)
+                                              x_prime, h, m_prime_tilde]), xto.LINEAR)
 
         marginal_cost_housing = uc_prime_adj * q * (1 + tau_housing)
-        marginal_return_housing = UC_prime_H_RHS + uh(c_t, h, alpha_housing)\
-            + ref_const_FOC
+        marginal_return_housing = UC_prime_H_RHS + uh(c_t, h, alpha_housing) + ref_const_FOC
 
         if ret_cons:
             return c_t
@@ -846,7 +847,7 @@ def worker_solver_factory(og,
 
         UC_prime_H_RHS = beta * eval_linear_c(X_cont_WAM2, UC_prime_H_func2D,
                                               np.array([x_prime, h, m_prime_tilde]),
-                                              xto.NEAREST)
+                                              xto.LINEAR)
 
 
         # Marginal value of relaxing collat constraint
@@ -854,10 +855,10 @@ def worker_solver_factory(og,
 
         if m_prime_tilde >= (1 - phi_c):
             ref_const_FOC = q * (1 - phi_c)\
-                * (max(0, uc_prime - UC_prime_M_func1D[-1]))
+                * (max(0, uc_prime - np.interp(m_prime_tilde,M, UC_prime_M_func1D)))
 
         marginal_cost_housing = uc_prime * q * (1 + tau_housing)
-        marginal_return_housing = UC_prime_H_RHS + uh(c, h, alpha_housing) \
+        marginal_return_housing = UC_prime_H_RHS + uh(c, h, alpha_housing)\
             + ref_const_FOC
 
         return marginal_cost_housing - marginal_return_housing
@@ -974,7 +975,7 @@ def worker_solver_factory(og,
             # calculate optimal a_t+1
             a_prime_1 = FOC_renters(c_t, h, q, alpha_housing,
                                     UC_prime_func1D)
-            a_prime = max(min(a_prime_1, 100), A_min)
+            a_prime = max(min(a_prime_1, A_max_W), A_min)
 
             # generate endogenous grid
             a_end_1[i] = c_t + a_prime + q * phi_r * h
@@ -1079,7 +1080,7 @@ def worker_solver_factory(og,
                 hs_sorted = np.zeros(1)
                 hs_sorted[0] = H_min
 
-            h_prime_func_1[i, :] = interp_as(a_end_clean, hs_sorted, W_W)
+            h_prime_func_1[i, :] = interp_as(a_end_clean, hs_sorted, W_W, extrap= False)
             h_prime_func_1[i, :][h_prime_func_1[i, :] <= 0] = H_min
 
             v_prime_func_1[i, :] = interp_as(a_end_clean, v_end_clean, W_W)
@@ -1144,8 +1145,9 @@ def worker_solver_factory(og,
 
             Aprime_noadjust_1[i] = interp_as(assets_reshaped_1[i],
                                              a_prime_points,
-                                             A, extrap= True)
+                                             A, extrap= False)
             Aprime_noadjust_1[i][Aprime_noadjust_1[i] <= 0] = A_min
+            Aprime_noadjust_1[i][Aprime_noadjust_1[i] >= A_max_W] = A_max_W
             Aprime_noadjust_1[i][Aprime_noadjust_1[i] == np.nan] = A_min
 
             c_prime_points = np.take(cons_reshaped_1[i][~np.isnan(
@@ -1153,9 +1155,10 @@ def worker_solver_factory(og,
 
             C_noadj_1[i] = interp_as(assets_reshaped_1[i],
                                      c_prime_points,
-                                     A)
+                                     A, extrap= False)
             C_noadj_1[i][C_noadj_1[i] == np.nan] = C_min
             C_noadj_1[i][C_noadj_1[i] <= 0] = C_min
+            C_noadj_1[i][C_noadj_1[i] >= C_max] = C_max
 
             vf_prime_points = np.take(vf_reshaped_1[i][~np.isnan(
                 assets_reshaped_1[i])], np.argsort(assets_reshaped_1[i]))
@@ -1170,7 +1173,7 @@ def worker_solver_factory(og,
 
             UHdb_noadj_1[i] = interp_as(assets_reshaped_1[i],
                                         uhdb_prime_points,
-                                        A, extrap= True)
+                                        A)
             UHdb_noadj_1[i][UHdb_noadj_1[i] == np.nan] = 1e-250
 
             uc_points = np.take(uc_reshaped_1[i][~np.isnan(
@@ -1178,7 +1181,7 @@ def worker_solver_factory(og,
 
             UC_noadj_1[i] = interp_as(assets_reshaped_1[i],
                                       uc_points,
-                                      A, extrap= True)
+                                      A)
             UC_noadj_1[i][UHdb_noadj_1[i] == np.nan] = 1e-250
 
         return np.ravel(C_noadj_1), np.ravel(V_reshaped_1),\
@@ -1277,6 +1280,7 @@ def worker_solver_factory(og,
             h, q, a_dc = H[h_ind], Q[q_ind], A_DC[adc_ind]
 
             beta = beta_hat[beta_ind]
+           # print(beta)
             alpha_housing = alpha_hat[alpha_ind]
 
             # get functions for next period U_prime and VF values
@@ -1361,10 +1365,10 @@ def worker_solver_factory(og,
 
                 UC_prime_adj[i] = uc(C[i], h, alpha_housing)
 
-            if FOC_housing_adj(A_min, *args_HA_FOC)\
-                    * FOC_housing_adj(A_max_W, *args_HA_FOC) < 0:
+            elif FOC_housing_adj(A_min, *args_HA_FOC)\
+                    * FOC_housing_adj(100, *args_HA_FOC) < 0:
                 # if interior solution to a_t+1, calculate it
-                A_prime[i] = min(A_max_W,max(brentq(FOC_housing_adj, A_min, A_max_W,
+                A_prime[i] = min(A_max_W,max(brentq(FOC_housing_adj, A_min, 100,
                                         args=args_HA_FOC, disp=False)[0],
                                  A_min))
 
@@ -1406,34 +1410,46 @@ def worker_solver_factory(og,
             # mortage with binding liquid assett FOC at A_min
             elif FOC_housing_adj_bind(C_min, *args_eval_c)\
                     * FOC_housing_adj_bind(C_max, *args_eval_c) < 0:
-                C_at_amin = min(
-                    C_max, max(brentq(FOC_housing_adj_bind, C_min,\
-                        	 C_max, args=args_eval_c, disp=False)[0], C_min))
+
+                results_bq = brentq(FOC_housing_adj_bind, C_min,\
+                             C_max, args=args_eval_c, disp=False)
+                if results_bq[3] == True:
+                    C_at_amin = min(
+                        C_max, max(results_bq[0], C_min))
 
 
-                uc_prime = uc(C_at_amin, h, alpha_housing)
+                    uc_prime = uc(C_at_amin, h, alpha_housing)
 
-                m_prime_at_amin = min(max(0,np.interp(uc_prime, UC_prime_M_func1D, M)),max_loan)
+                    m_prime_at_amin = min(max(0,np.interp(uc_prime, UC_prime_M_func1D, M)),max_loan)
 
-                # if liquid assett const. does not satisfy
-                # FOC, throw point out
-                # if uc(C_at_amin, h, alpha_housing) > UC_prime_RHS_amin:
-                A_prime[i] = A_min
-                C[i] = C_at_amin
-
-                wealth_bar[i] = C[i] \
-                    + A_prime[i]\
-                    + q * h * ((1 - m_prime_at_amin) + tau_housing)\
-
-                eta_adj[i] = u(C[i],
-                               h,
-                               alpha_housing) + beta * eval_linear_c(X_cont_WAM2,
-                                                                     VF_func2D,
+                    UC_prime_RHS_amin = beta * eval_linear_c(X_cont_WAM2,
+                                                                     UC_prime_func2D,
                                                                      np.array([A_min,
                                                                                h,
                                                                                m_prime_at_amin]),
                                                                      xto.NEAREST)
-                UC_prime_adj[i] = uc(C[i], h, alpha_housing)
+
+                    # if liquid assett const. does not satisfy
+                    # FOC, throw point out
+                    if uc(C_at_amin, h, alpha_housing) >= UC_prime_RHS_amin:
+                        A_prime[i] = A_min
+                        C[i] = C_at_amin
+
+                        wealth_bar[i] = C[i] \
+                            + A_prime[i]\
+                            + q * h * ((1 - m_prime_at_amin) + tau_housing)\
+
+                        eta_adj[i] = u(C[i],
+                                       h,
+                                       alpha_housing) + beta * eval_linear_c(X_cont_WAM2,
+                                                                             VF_func2D,
+                                                                             np.array([A_min,
+                                                                                       h,
+                                                                                       m_prime_at_amin]),
+                                                                             xto.NEAREST)
+                        UC_prime_adj[i] = uc(C[i], h, alpha_housing)
+                    else:
+                        pass 
 
             # we are not force include point with zero housing
             # if solution adjusted to housing
@@ -1591,7 +1607,7 @@ def worker_solver_factory(og,
                                                   E_ind, alpha_ind,
                                                   beta_ind, Pi_ind,
                                                   0, adc_ind, h_ind,
-                                                  q_ind, 5]
+                                                  q_ind, :]
 
             mfunc_uc_m_prime = UC_prime_M_func_ex[DB_ind,
                                                   E_ind, alpha_ind,
@@ -1623,10 +1639,11 @@ def worker_solver_factory(og,
 
             # Step 1: check if constrainted by full re-payment of liability
             if a_ind == 0:
+                uc_inv_mprime = np.interp(1-phi_c, M, mfunc_uc_m_prime_a_min)
                 c_t = min(
-                    max(C_min, uc_inv(mfunc_uc_m_prime_a_min, h, alpha_housing)), C_max)
+                    max(C_min, uc_inv(uc_inv_mprime, h, alpha_housing)), C_max)
 
-                m_prime = M[5]
+                m_prime = (1-phi_c)
 
 
             elif uc_prime_fp <= ucmprime_m_fp:
@@ -1638,7 +1655,7 @@ def worker_solver_factory(og,
             # Step 2: otherwise, eval unconstrained
             # Note we are still constrained by collateral
             else:
-                m_prime_adj = interp(A, mort_func1D, a_prime)
+                m_prime_adj = np.interp(a_prime,A, mort_func1D)
                 m_prime = max(0, min(m_prime_adj, (1 - phi_c)))
                 UC_prime_RHS = max(1e-250,
                                    beta * eval_linear_c(X_cont_WAM,
@@ -1958,23 +1975,27 @@ def worker_solver_factory(og,
             wealth_xs = np.sort(wealth_x)
 
             # Invert by interpolation
-            assets_prime_adj_inverted[i] = interp_as(wealth_xs, assts_x, W_W)
+            assets_prime_adj_inverted[i] = interp_as(wealth_xs, assts_x, W_W, extrap= False)
             assets_prime_adj_inverted[i][assets_prime_adj_inverted[i] <= 0]\
                 = A_min
             assets_prime_adj_inverted[i][assets_prime_adj_inverted[i]
                                          == np.nan] = A_min
+            assets_prime_adj_inverted[i][assets_prime_adj_inverted[i] >= A_max_W] = A_max_W
 
-            c_prime_adj_inverted[i] = interp_as(wealth_xs, c_x, W_W)
+            c_prime_adj_inverted[i] = interp_as(wealth_xs, c_x, W_W, extrap= False)
             c_prime_adj_inverted[i][c_prime_adj_inverted[i] <= 0] = C_min
             c_prime_adj_inverted[i][c_prime_adj_inverted[i] == np.nan] = C_min
+            c_prime_adj_inverted[i][c_prime_adj_inverted[i] >= C_max] = C_max
 
-            H_prime_adj_inverted[i] = interp_as(wealth_xs, h_x, W_W)
+            H_prime_adj_inverted[i] = interp_as(wealth_xs, h_x, W_W, extrap= False)
             H_prime_adj_inverted[i][H_prime_adj_inverted[i] <= 0] = H_min
             H_prime_adj_inverted[i][H_prime_adj_inverted[i] == np.nan] = H_min
+            H_prime_adj_inverted[i][H_prime_adj_inverted[i] >= H_max] = H_max
 
             eta_adj_prime_inverted[i] = interp_as(wealth_xs, eta_x, W_W)
             uc_prime_adj_prime_inverted[i] = interp_as(wealth_xs, uc_x, W_W)
-           # print(eta_adj_prime_inverted[i])
+            #print(c_x)
+            print(assts_x)
 
         return np.ravel(assets_prime_adj_inverted),\
             np.ravel(H_prime_adj_inverted),\
@@ -2156,6 +2177,7 @@ def worker_solver_factory(og,
                                          grid_size_H, 2))\
                 .transpose((0, 1, 2, 3, 7, 4, 8, 9, 10, 5, 6, 11))\
                 .reshape((x_all_ind_len, 2))
+            #print(adj_vals[:,0])
             return adj_vals, C_adj, H_adj, Aprime_adj
         else:
             return None
@@ -2283,6 +2305,8 @@ def worker_solver_factory(og,
                                                  my_points_adj[i], xto.NEAREST)
             my_ucadj_eval[i, :] = eval_linear_c(X_QH_W, my_uc_prime_adj[i],
                                                 my_points_adj[i], xto.NEAREST)
+
+        
         my_etaadj_eval1 = np.ravel(my_etaadj_eval)
         my_ucadj_eval1 = np.ravel(my_ucadj_eval)
 
@@ -2413,6 +2437,7 @@ def worker_solver_factory(og,
         etas_noadj = noadj_vals[:, 0]
         etas_adj = adj_vals[:, 0]
         etas_ind = etas_noadj > etas_adj
+  
         eta_mu = etas_noadj / etas_adj
 
         # Marginal bequest value if person diese at start of period
@@ -2424,6 +2449,7 @@ def worker_solver_factory(og,
         vf_prime_rent = rent_vals[:, 1]
         renter_ind = vf_prime_rent > vf_no_rent
         zeta = vf_prime_rent / vf_no_rent
+        #print(vf_no_rent)
 
         # Generate policies for non-renters
         # eta*no-adjust + (1-eta)*adjust
@@ -2440,6 +2466,7 @@ def worker_solver_factory(og,
         vol_cost = adj_v(t, A[my_X_all_ind[:, 6]]) * v_ind
         # check whether prime value or what goes in to ADC
         pi_cost = adj_pi(t, A_DC[my_X_all_ind[:, 7]], adj_p(17)) * pi_ind
+        #print(pi_cost)
 
         Xi_norent = vf_no_rent - vol_cost - pi_cost
         Xi_rent = vf_prime_rent - vol_cost - pi_cost
@@ -2479,9 +2506,10 @@ def worker_solver_factory(og,
 
         uc_prime_m = uc_prime / (1 + r)
 
-        vf_prime = renter_ind * vf_prime_rent + (1 - renter_ind) * vf_no_rent
+        vf_prime = s[int(t - 1)] * (renter_ind * vf_prime_rent + (1 - renter_ind) * vf_no_rent) +\
+                    (1-s[int(t - 1)])*b(A_prime)
         Xi = renter_ind * Xi_rent + (1 - renter_ind) * Xi_norent
-        Xi = Xi/(R-t)
+
         return vf_prime, Xi, zeta, eta_mu, uc_prime, uc_prime_h, uc_prime_m
 
     def gen_rhs_uc_func(comm, t,
@@ -2560,7 +2588,7 @@ def worker_solver_factory(og,
 
         """
 
-        # Scatter adj, noadj and rent grid vals to all 4 cores
+        # Scatter adj, noadj and rent grid vals to all cores
 
         if comm.rank == 0:
             noadj_vals_chunks = np.array_split(noadj_vals, comm.size, axis=0)
@@ -2650,6 +2678,9 @@ def worker_solver_factory(og,
 
     def _gen_probs(my_xi, scaling_param):
 
+        """Generates discrete choice probabilities
+            from value function and scaling param"""
+
         my_Xi_copi_temp = np.add(my_xi / scaling_param,
                                  - np.max(my_xi / scaling_param,
                                           axis=1)[:, np.newaxis])
@@ -2657,6 +2688,7 @@ def worker_solver_factory(og,
             / np.sum(np.exp(my_Xi_copi_temp), axis=1)[:, np.newaxis]
 
         my_prob_pi[np.where(np.isnan(my_prob_pi))] = .001
+
 
         return np.ravel(my_prob_pi)
 
@@ -2711,6 +2743,7 @@ def worker_solver_factory(og,
                      recvbuf=(prob_pi, sendcounts), root=0)
         if comm.rank == 0:
             prob_pi = prob_pi.reshape((len(Xi_copi), len(Pi)))
+            
 
         else:
             prob_pi = None
@@ -2722,6 +2755,7 @@ def worker_solver_factory(og,
             UC_prime_M_cpi = _my_einsum_row(prob_pi, UC_prime_M_copi)
             VF_B_cpi = _my_einsum_row(prob_pi, VF_B_copi)
             Xi_cpi = _my_einsum_row(prob_pi, Xi_copi)
+
 
         if comm.rank == 0:
             # Reshape to condition out V
@@ -2757,6 +2791,7 @@ def worker_solver_factory(og,
 
         if comm.rank == 0:
             prob_v = prob_v.reshape((len(Xi_cov), len(V)))
+            #print(prob_v)
 
         else:
             prob_v = None
@@ -2827,7 +2862,9 @@ def worker_solver_factory(og,
         my_UC_prime = np.empty(len(my_X_all_ind))
         my_UC_prime_H = np.empty(len(my_X_all_ind))
         my_UC_prime_M = np.empty(len(my_X_all_ind))
-        my_VF = np.empty(len(my_X_all_ind))
+        my_VF = np.empty(len(my_X_all_ind))\
+
+        #print(VF_DCC)
 
         for i in range(len(my_X_all_ind)):
             # print(my_X_all_ind[i][1])
@@ -2909,8 +2946,9 @@ def worker_solver_factory(og,
 
             my_UC_prime[i], my_UC_prime_H[i],\
                 my_UC_prime_M[i], my_VF[i]\
-                = d0(U1, Q_DC_P), d0(U2, Q_DC_P),\
-                d0(U3, Q_DC_P), d0(V, Q_DC_P)
+                = np.dot(U1, Q_DC_P),np.dot(U2, Q_DC_P),\
+                np.dot(U3, Q_DC_P), np.dot(V, Q_DC_P)
+            #print(my_VF[i])
 
         my_UC_prime[np.where(my_UC_prime <= 0)] = 1E-250
         my_UC_prime_H[np.where(my_UC_prime_H <= 0)] = 1E-250
@@ -3126,10 +3164,20 @@ def worker_solver_factory(og,
                 print("Iteration time was {}".format(time.time() - start2))
 
             # Step 7: Save policy functions to job file system
-
-            # Send arrays to ranl
-
             if comm.rank == 0:
+
+                if verbose == True:
+                    import matplotlib.pyplot as plt
+                    VF_plot = VF.reshape(all_state_shape)
+
+                    for j in range(len(Q)):
+                        for h in range(len(H)):
+                            plt.plot(A, VF_plot[0,1,0,1,1,:,3,h,j,1])
+
+                            plt.savefig('plots/vf_plot_age_{}_q_{}_h_{}_acc_{}.png'\
+                                .format(t,j, h, acc_ind))
+
+
                 start = time.time()
                 if t == tzero:
                     policy_VF = VF.reshape((len(DB),

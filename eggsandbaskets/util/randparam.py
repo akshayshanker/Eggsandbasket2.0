@@ -31,14 +31,20 @@ def rand_p_generator(
     random_draw = np.random.uniform(0, 1)
     # noise injection rate of 10%\\
 
-    #initial_r = 0
-    if random_draw<0:
-        param_random_cov = np.diag(np.diag(param_random_cov))
-        #param_random_cov[1,1] = param_random_cov[1,1]*2
+    initial_r = 0
 
+    if random_draw<0.15:
+        #param_random_cov = np.diag(np.diag(param_random_cov))
+        #param_random_cov[1,1] = param_random_cov[1,1]*2
+        initial_r = 1
+
+    if initial == True or  initial_r == 1:
+        initial_draw = 1
+    else:
+        initial_draw = 0
 
     in_range = False
-    if deterministic == 0 and initial == 0:
+    if deterministic == 0 and initial_draw == 0:
 
         while in_range == False:
             draws = np.random.multivariate_normal(param_random_means, param_random_cov)
@@ -52,7 +58,7 @@ def rand_p_generator(
             for i,key in zip(np.arange(len(draws)),param_random_bounds.keys()):
                 parameters[key]  = draws[i]
 
-    if deterministic == 0 and initial == 1:
+    if deterministic == 0 and initial_draw == 1:
         for key in param_random_bounds:
             parameters[key]  = np.random.uniform(param_random_bounds[key][0], param_random_bounds[key][1])
 
