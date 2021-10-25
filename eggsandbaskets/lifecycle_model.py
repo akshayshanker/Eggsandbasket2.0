@@ -857,7 +857,7 @@ if __name__ == "__main__":
 		top_id = 'UDMK2H_20210924-175536_baseline_male'
 		#params = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male/{}_acc_0/params.smms".format(top_id),"rb"))
 		#param_dict = eggbasket_config['male']
-		#param_dict['parameters'] = params
+		eggbasket_config['male']['parameters']['beta_bar'] = 0.92
 		#param_dict['parameters']['nu_r_0']  = 0
 		sampmom = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v8/latest_sampmom.smms".format(model_name),"rb"))
 		LS_models = LifeCycleParams('test',
@@ -868,4 +868,6 @@ if __name__ == "__main__":
 																param_random_means=sampmom[0],
 																param_random_cov=sampmom[1],
 																uniform = False)
+
+		og = LS_models.og_DC
 		

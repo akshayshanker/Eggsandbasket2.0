@@ -1578,7 +1578,7 @@ def retiree_func_factory(og):
 					# conditioned on state E_ind in the previous period
 					# *note we sum over the j wage shock probs in the loop over len(Q_DC_P)*
 
-					UC_prime =+ P_E[E_ind][j]\
+					UC_prime = UC_prime+  P_E[E_ind][j]\
 								 * ((1 + r) * (s[int(R - 1)] * uc_prime \
 									+ (1 - s[int(R - 1)]) * b_prime(A_prime)))
 
@@ -1588,15 +1588,15 @@ def retiree_func_factory(og):
 					index_no_adj_and_norent = eta_ind * (1-rent_ind)
 					m_beq_h_all  = Q_prime * (1 - delta_housing) * b_prime(A_prime)
 					
-					UC_prime_H =+ P_E[E_ind][j] * (s[int(R - 1)]*(\
+					UC_prime_H = UC_prime_H +  P_E[E_ind][j] * (s[int(R - 1)]*(\
 										(index_adj_or_rent * UC_prime_H_adj_rent \
 											+ index_no_adj_and_norent * UC_prime_H_noadj))\
 											+ (1 - s[int(R - 1)])*m_beq_h_all)
 
-					UC_prime_M =+ P_E[E_ind][j] * M_prime_R * (s[int(R - 1)] * uc_prime\
+					UC_prime_M = UC_prime_M+  P_E[E_ind][j] * M_prime_R * (s[int(R - 1)] * uc_prime\
 											 + (1 - s[int(R - 1)]) * b_prime(A_prime)) # check the bequest here, interest is not being charged 
 
-					VF_cont =+ s[int(R - 1)] * P_E[E_ind][j] * val +\
+					VF_cont = VF_cont + s[int(R - 1)] * P_E[E_ind][j] * val +\
 									P_E[E_ind][j] *(1 - s[int(R - 1)]) * b(A_prime)
 
 				# No condition over the i.i.d shocks

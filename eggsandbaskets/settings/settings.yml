@@ -397,10 +397,10 @@ male:
     DC_max: 14.0
     DC_min: .1
     H_max: 16
-    HS_max: 14
+    HS_max: 16
     H_min: 1.0e-05
     ID: 188198904234
-    M_max: 1.0
+    M_max: 0.9
     M_min: 0.0
     Q_max: 1.35
     Q_min: 0.1
@@ -417,15 +417,15 @@ male:
     f_ASF: 1.0
     f_LSF: 0.23
     gamma: 3.3
-    grid_size_A: 20.0
+    grid_size_A: 15.0
     grid_size_C: 15.0
     grid_size_DC: 8.0
     grid_size_DCR: 2.0
-    grid_size_H: 30.0
-    grid_size_HS: 30.0
+    grid_size_H: 26.0
+    grid_size_HS: 26.0
     grid_size_M: 8.0
-    grid_size_Q: 8.0
-    grid_size_Q_s: 3.0
+    grid_size_Q: 6.0
+    grid_size_Q_s: 2.0
     grid_size_W: 3.0
     grid_size_alpha: 1.0
     grid_size_beta: 2.0

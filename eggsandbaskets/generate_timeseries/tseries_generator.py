@@ -376,7 +376,7 @@ def genprofiles_operator(og,
 														Pi_ind,:]
 
 					zeta_val = eval_linear(X_cont_W,zeta_func,\
-											  points_zeta, xto.NEAREST) 
+											  points_zeta, xto.LINEAR) 
 
 					# Take note of the DC value in the points_noadj
 					# Policy functions are defined on the after vol.cont 
@@ -392,7 +392,7 @@ def genprofiles_operator(og,
 														Pi_ind, :]
 					
 					eta_val = eval_linear(X_cont_W,eta_func,\
-										  points_noadj, xto.NEAREST)
+										  points_noadj, xto.LINEAR)
 
 					# Calculate if renter 
 					renter1 = zeta_val > 0 
@@ -406,11 +406,11 @@ def genprofiles_operator(og,
 
 						hs_points = np.array([wealth_rent,DC_prime, q]) 
 						H_services = max(H_min, eval_linear(X_QH_WRTS,\
-										 h_rent_func, hs_points,  xto.NEAREST))
+										 h_rent_func, hs_points,  xto.LINEAR))
 
 						TS_C = min(ch_ser(H_services, alpha_val, phi_r*q), C_max)
 						TS_M_1 = 0
-						TS_A_1 = min(max(A_min,wealth_rent - phi_r*q*H_services - TS_C), A_max_W)
+						TS_A_1 = max(A_min,wealth_rent - phi_r*q*H_services - TS_C)
 						TS_H_1 = H_min
 
 					elif eta_val>0:
@@ -425,10 +425,10 @@ def genprofiles_operator(og,
 														Pi_ind,:]
 						no_adj_points = np.array([max(A_min,wealth_no_adj),\
 													DC_prime,h,q,TS_M])
-						TS_A_1 = min(max(A_min,eval_linear(X_cont_W,a_noadjust_func,\
-													no_adj_points,  xto.NEAREST)), A_max_W)
-						TS_C = min(max(C_min,eval_linear(X_cont_W,c_noadjust_func,\
-													no_adj_points,  xto.NEAREST)), C_max)
+						TS_A_1 = max(A_min,eval_linear(X_cont_W,a_noadjust_func,\
+													no_adj_points,  xto.LINEAR))
+						TS_C = max(C_min,eval_linear(X_cont_W,c_noadjust_func,\
+													no_adj_points,  xto.LINEAR))
 						extra_payment = wealth_no_adj - TS_A_1 - TS_C
 
 						total_liability_mort = TS_M*h*q - extra_payment
@@ -456,15 +456,15 @@ def genprofiles_operator(og,
 						adj_points = np.array([DC_prime,q,TS_M,\
 													wealth_adj])
 
-						TS_C = min(max(C_min,eval_linear(X_QH_W_TS,\
+						TS_C = max(C_min,eval_linear(X_QH_W_TS,\
 											c_prime_adj_func,\
-											adj_points,  xto.NEAREST)), C_max)
-						TS_H_1 = min(max(H_min, eval_linear(X_QH_W_TS,\
+											adj_points,  xto.LINEAR))
+						TS_H_1 = max(H_min, eval_linear(X_QH_W_TS,\
 											H_adj_func,\
-											adj_points,  xto.NEAREST)), H_max)
-						TS_A_1 = min(max(A_min, eval_linear(X_QH_W_TS,\
+											adj_points,  xto.LINEAR))
+						TS_A_1 = max(A_min, eval_linear(X_QH_W_TS,\
 											a_prime_adj_func,\
-											adj_points,  xto.NEAREST)), A_max_W)
+											adj_points,  xto.LINEAR))
 
 						total_liability_mort = wealth_adj - TS_A_1 - TS_C \
 										- TS_H_1*q*(1+tau_housing)

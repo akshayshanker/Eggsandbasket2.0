@@ -40,7 +40,8 @@ def worker_solver_factory(og,
                           comm,
                           gen_R_pol,
                           jobfs_path,
-                          verbose=False):
+                          verbose=False, 
+                          plot_vf = False):
     """Generates operator that solves  worker policies
 
     Parameters
@@ -1080,7 +1081,7 @@ def worker_solver_factory(og,
                 hs_sorted = np.zeros(1)
                 hs_sorted[0] = H_min
 
-            h_prime_func_1[i, :] = interp_as(a_end_clean, hs_sorted, W_W, extrap= False)
+            h_prime_func_1[i, :] = interp_as(a_end_clean, hs_sorted, W_W, extrap= True)
             h_prime_func_1[i, :][h_prime_func_1[i, :] <= 0] = H_min
 
             v_prime_func_1[i, :] = interp_as(a_end_clean, v_end_clean, W_W)
@@ -1145,7 +1146,7 @@ def worker_solver_factory(og,
 
             Aprime_noadjust_1[i] = interp_as(assets_reshaped_1[i],
                                              a_prime_points,
-                                             A, extrap= False)
+                                             A, extrap= True)
             Aprime_noadjust_1[i][Aprime_noadjust_1[i] <= 0] = A_min
             Aprime_noadjust_1[i][Aprime_noadjust_1[i] >= A_max_W] = A_max_W
             Aprime_noadjust_1[i][Aprime_noadjust_1[i] == np.nan] = A_min
@@ -1155,7 +1156,7 @@ def worker_solver_factory(og,
 
             C_noadj_1[i] = interp_as(assets_reshaped_1[i],
                                      c_prime_points,
-                                     A, extrap= False)
+                                     A, extrap= True)
             C_noadj_1[i][C_noadj_1[i] == np.nan] = C_min
             C_noadj_1[i][C_noadj_1[i] <= 0] = C_min
             C_noadj_1[i][C_noadj_1[i] >= C_max] = C_max
@@ -1975,27 +1976,27 @@ def worker_solver_factory(og,
             wealth_xs = np.sort(wealth_x)
 
             # Invert by interpolation
-            assets_prime_adj_inverted[i] = interp_as(wealth_xs, assts_x, W_W, extrap= False)
+            assets_prime_adj_inverted[i] = interp_as(wealth_xs, assts_x, W_W, extrap= True)
             assets_prime_adj_inverted[i][assets_prime_adj_inverted[i] <= 0]\
                 = A_min
             assets_prime_adj_inverted[i][assets_prime_adj_inverted[i]
                                          == np.nan] = A_min
             assets_prime_adj_inverted[i][assets_prime_adj_inverted[i] >= A_max_W] = A_max_W
 
-            c_prime_adj_inverted[i] = interp_as(wealth_xs, c_x, W_W, extrap= False)
+            c_prime_adj_inverted[i] = interp_as(wealth_xs, c_x, W_W, extrap= True)
             c_prime_adj_inverted[i][c_prime_adj_inverted[i] <= 0] = C_min
             c_prime_adj_inverted[i][c_prime_adj_inverted[i] == np.nan] = C_min
             c_prime_adj_inverted[i][c_prime_adj_inverted[i] >= C_max] = C_max
 
-            H_prime_adj_inverted[i] = interp_as(wealth_xs, h_x, W_W, extrap= False)
+            H_prime_adj_inverted[i] = interp_as(wealth_xs, h_x, W_W, extrap= True)
             H_prime_adj_inverted[i][H_prime_adj_inverted[i] <= 0] = H_min
             H_prime_adj_inverted[i][H_prime_adj_inverted[i] == np.nan] = H_min
             H_prime_adj_inverted[i][H_prime_adj_inverted[i] >= H_max] = H_max
 
             eta_adj_prime_inverted[i] = interp_as(wealth_xs, eta_x, W_W)
             uc_prime_adj_prime_inverted[i] = interp_as(wealth_xs, uc_x, W_W)
-            #print(c_x)
-            print(assts_x)
+            #print(assts_x)
+            #print(eta_adj_prime_inverted[i])
 
         return np.ravel(assets_prime_adj_inverted),\
             np.ravel(H_prime_adj_inverted),\
@@ -2923,7 +2924,7 @@ def worker_solver_factory(og,
                                              beta_ind_p,
                                              a_ind, :,
                                              h_ind, :, :],
-                                point, xto.NEAREST),\
+                                point, xto.LINEAR),\
                 eval_linear_c(X_DCQ_W,
                               UC_prime_H_DCC[DB_ind,
                                              E_ind_p,
@@ -2931,13 +2932,13 @@ def worker_solver_factory(og,
                                              beta_ind_p,
                                              a_ind, :,
                                              h_ind, :, :],
-                              point, xto.NEAREST),\
+                              point, xto.LINEAR),\
                 eval_linear_c(X_DCQ_W,
                               UC_prime_M_DCC[DB_ind,
                                              E_ind_p, alpha_ind_p,
                                              beta_ind_p, a_ind, :,
                                              h_ind, :, :],
-                              point, xto.NEAREST) * R_m_prime,\
+                              point, xto.LINEAR) * R_m_prime,\
                 eval_linear_c(X_DCQ_W,
                               VF_DCC[DB_ind, E_ind_p,
                                      alpha_ind_p, beta_ind,
@@ -3166,16 +3167,42 @@ def worker_solver_factory(og,
             # Step 7: Save policy functions to job file system
             if comm.rank == 0:
 
-                if verbose == True:
-                    import matplotlib.pyplot as plt
+                if verbose == True and plot_vf == True:
+                    """ Plot value function""" 
+
+                    #import matplotlib.pyplot as plt
+                    #import matplotlib.colors as mcolors
+                    #import matplotlib.cm as cm
+                    #import matplotlib.pyplot as plt
+                    #from matplotlib.colors import DivergingNorm
+
+
+                    NUM_COLORS = grid_size_H
+                    colormap = cm.viridis
+
+                    normalize = mcolors.Normalize(
+                            vmin=np.min(H), vmax=np.max(H))
+
                     VF_plot = VF.reshape(all_state_shape)
+                    Path('plots/valuefunctions/').mkdir(parents=True, exist_ok=True)
 
                     for j in range(len(Q)):
                         for h in range(len(H)):
-                            plt.plot(A, VF_plot[0,1,0,1,1,:,3,h,j,1])
+                            plt.plot(np.log(A), VF_plot[0,1,0,1,1,:,3,h,j,1], color=colormap(
+                                          h // 3 * 3.0 / NUM_COLORS))
 
-                            plt.savefig('plots/vf_plot_age_{}_q_{}_h_{}_acc_{}.png'\
-                                .format(t,j, h, acc_ind))
+                        scalarmappaple = cm.ScalarMappable(norm=normalize, cmap=colormap)
+                        scalarmappaple.set_array(H)
+                        cbar = plt.colorbar(scalarmappaple)
+                        cbar.set_label('House stock')
+
+                        plt.ylim((-5, 25))
+                        plt.xlim((-1, np.log(A[-1])))
+                        plt.xlabel('Log Liquid assets (AUD 100,000)')
+                        plt.ylabel('Continuation value')
+                        plt.savefig('plots/valuefunctions/vf_plot_age_{}_q_{}_acc_{}.png'\
+                            .format(t,j, acc_ind[0]))
+                        plt.close()
 
 
                 start = time.time()
@@ -3265,7 +3292,7 @@ def generate_worker_pols(og,
                          comm,
                          load_retiree=1,
                          jobfs_path='/scratch/pv33/ls_model_temp2/',
-                         verbose=False):
+                         verbose=False, plot_vf = False):
 
     gen_R_pol = retiree_func_factory(og)
 
@@ -3274,7 +3301,7 @@ def generate_worker_pols(og,
                                            comm,
                                            gen_R_pol,
                                            jobfs_path=jobfs_path,
-                                           verbose=verbose)
+                                           verbose=verbose, plot_vf = plot_vf)
 
     policies = solve_LC_model(comm, world_comm, load_retiree)
 

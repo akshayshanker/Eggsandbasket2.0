@@ -33,7 +33,7 @@ def rand_p_generator(
 
     initial_r = 0
 
-    if random_draw<0.15:
+    if random_draw<0.1:
         #param_random_cov = np.diag(np.diag(param_random_cov))
         #param_random_cov[1,1] = param_random_cov[1,1]*2
         initial_r = 1

@@ -138,7 +138,7 @@ if __name__ == "__main__":
 	if gender == 'male':
 	# Solve male baseline (Initial submit version may 12,2021)
 	# Note '9GLB6E_20210501-181303_baseline_male' is used as male baseline ID
-		model_name = 'baseline_male_v12'
+		model_name = 'baseline_male_v12_smaller'
 		params = eggbasket_config['male']
 		top_id = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v12/topid.smms","rb"))
 		params = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male_v12/params/{}_params.pkl".format(top_id),"rb"))
@@ -146,11 +146,13 @@ if __name__ == "__main__":
 		param_dict['parameters'] = params
 		#sampmom = pickle.load(open("/scratch/pv33/ls_model_temp2/baseline_male/latest_sampmom.smms".format(model_name),"rb"))
 		sampmom = [0,0]
-		#param_dict['rho'] = 0.05
 		param_dict['parameters']['A_max_W'] = 20
 		param_dict['parameters']['grid_size_H'] = 30
-		param_dict['parameters']['beta_hat'] = .96
-		param_dict['parameters']['gamma'] = - 4
+		param_dict['parameters']['grid_size_A'] = 15
+		param_dict['parameters']['grid_size_Q'] = 6
+		param_dict['parameters']['grid_size_DCR'] = 2
+		param_dict['parameters']['grid_size_Q_s'] = 2
+		param_dict['parameters']['beta_bar'] = .96
 		#shutil.rmtree(job_path+'/{}/'.format(model_name))
 		
 	# Solve female baseline
@@ -170,7 +172,6 @@ if __name__ == "__main__":
 													block_size_layer_ts)
 	#if node_world.rank == 0:  
 	#	shutil.rmtree(job_path+'/{}/'.format(model_name))
-	print(cross_layer1_world.rank)
 	if layer_1_comm.rank == 0: 
 		#print(param_dict['parameters']['A_max_WE'])
 		cov_mat = np.zeros(np.shape(sampmom[1]))
@@ -190,7 +191,7 @@ if __name__ == "__main__":
 	print("Rank {} on world is rank {} on layer 1 and rank {} on layer 2 and rank {} on cross_layer1_world model ID is {}"\
 			.format(world_rank,layer_1_comm.rank, layer_2_comm.rank, cross_layer1_world.rank, LS_models.param_id))
 
-	pickle.dump(LS_models.param_id,open(scr_path + "/{}/single_ID_latest.smms".format(model_name),"wb") )
+	#pickle.dump(LS_models.param_id,open(scr_path + "/{}/single_ID_latest.smms".format(model_name),"wb") )
 
 	if layer_1_comm.rank < layer_2_comm.size:
 		og  = LS_models.og_DB
@@ -217,7 +218,7 @@ if __name__ == "__main__":
 	#if layer_1_comm.rank ==0:
 	#	plot_retiree(ret_pols, og)
 	start = time.time()
-	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = False, jobfs_path = job_path, verbose = True)
+	policies = generate_worker_pols(og,world,layer_2_comm, load_retiree = False, jobfs_path = job_path, verbose = True, plot_vf= True)
 
 	node_world.Barrier()
 	
